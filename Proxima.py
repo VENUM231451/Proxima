@@ -6,13 +6,15 @@
 # - Admin joins all_counters room and receives live updates
 # - Uses SECRET_KEY and PORT from environment (Render-ready)
 # - DING sound plays on display (and user ticket) with static fallback
+# - NEW: Users must enter first + last name before seeing services
+# - Names saved in names.txt (no duplicates, case-insensitive), shown on admin dashboard
 # --------------------------
 
 import os
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, redirect, render_template_string, url_for
+from flask import Flask, request, redirect, render_template_string, url_for, session
 from flask_socketio import SocketIO, emit, join_room
 import uuid
 
@@ -50,7 +52,67 @@ user_categories = [
     "Medical Insurance"
 ]
 
+# ------------------ HELPERS: save/load names ------------------
+
+NAMES_FILE = "names.txt"
+
+def save_user_name(first, last):
+    """Save full name into names.txt (one per line). Prevent duplicates (case-insensitive)."""
+    full = f"{first.strip()} {last.strip()}".strip()
+    if not full:
+        return
+    # Ensure file exists
+    if not os.path.exists(NAMES_FILE):
+        open(NAMES_FILE, "a").close()
+    # Read existing names (case-insensitive set)
+    try:
+        with open(NAMES_FILE, "r", encoding="utf-8") as f:
+            existing = {line.strip().lower() for line in f if line.strip()}
+    except FileNotFoundError:
+        existing = set()
+    if full.lower() not in existing:
+        with open(NAMES_FILE, "a", encoding="utf-8") as f:
+            f.write(full + "\n")
+
+def load_user_names():
+    """Return list of stored full names (preserve original capitalization)."""
+    try:
+        with open(NAMES_FILE, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        return []
+
 # ------------------ TEMPLATES ------------------
+
+username_template = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>Enter Your Name</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
+.container{background:white;padding:28px;border-radius:12px;box-shadow:0 6px 30px rgba(10,20,40,0.08);text-align:center;width:360px}
+h1{color:#0D3B66;margin-bottom:16px;font-size:22px}
+input{display:block;width:100%;padding:12px;margin:10px 0;border-radius:8px;border:1px solid #ccc;font-size:16px}
+button{padding:12px;width:100%;border:none;border-radius:8px;background:#0D3B66;color:white;font-size:16px;cursor:pointer}
+button:hover{background:#08457e}
+.note{font-size:13px;color:#666;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Please Enter Your Name</h1>
+  <form method="POST" action="/">
+    <input type="text" name="first_name" placeholder="First Name" required>
+    <input type="text" name="last_name" placeholder="Last Name" required>
+    <button type="submit">Continue</button>
+  </form>
+  <div class="note">Both fields are required. We'll save your name so staff can see who registered.</div>
+</div>
+</body>
+</html>
+"""
 
 user_template = """
 <!DOCTYPE html>
@@ -79,7 +141,6 @@ h1{color:var(--brand);margin:0 0 16px;font-size:22px}
 
 <script>
 function selectService(category){
-    // go to ticket page for that category
     location.href = "/ticket_page/" + encodeURIComponent(category);
 }
 </script>
@@ -125,7 +186,6 @@ socket.emit("join_ticket_room", {ticket_id: ticketId});
 var ticketDing = document.getElementById('ticket-ding');
 ticketDing.preload = "auto";
 ticketDing.addEventListener('error', function(){
-    // fallback to external URL if static fails
     ticketDing.src = "https://www.soundjay.com/buttons/sounds/button-16.mp3";
     ticketDing.load();
 });
@@ -142,7 +202,6 @@ updateWaiting();
 
 socket.on("ticket_called", function(data){
     if(data.id === ticketId){
-        // try play ding
         try { ticketDing.currentTime = 0; ticketDing.play().catch(()=>{}); } catch(e){}
         document.getElementById('counter_info').innerText = "Assigned Counter: " + data.counter_name;
         alert("Ticket " + ticketId + " is being served at " + data.counter_name);
@@ -312,6 +371,7 @@ button{padding:8px 12px;border-radius:8px;border:none;background:#0D3B66;color:w
 button:hover{background:#08457e}
 .checkbox-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .checkbox-list label{background:#fff;padding:6px 8px;border-radius:6px;border:1px solid #ddd}
+.names-list{margin-top:18px;background:#fff;padding:12px;border-radius:8px;border:1px solid #e6e9ee}
 </style>
 </head>
 <body>
@@ -347,6 +407,19 @@ button:hover{background:#08457e}
 </tr>
 {% endfor %}
 </table>
+
+<div class="names-list">
+  <h3>Registered Users</h3>
+  {% if names %}
+    <ul>
+      {% for name in names %}
+        <li>{{ name }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No users have registered yet.</p>
+  {% endif %}
+</div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
@@ -422,12 +495,36 @@ def call_next_ticket(counter_id):
 
 # ------------------ ROUTES ------------------
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
+def username_page():
+    # if user has already entered name, redirect to services
+    if request.method == "GET":
+        if session.get("user_name"):
+            return redirect("/services")
+        return render_template_string(username_template)
+
+    # POST -> save name and redirect to services
+    first = request.form.get("first_name", "").strip()
+    last = request.form.get("last_name", "").strip()
+    if not first or not last:
+        # if missing redirect back (template has required fields but double-check)
+        return redirect("/")
+    save_user_name(first, last)
+    session["user_name"] = f"{first} {last}"
+    return redirect("/services")
+
+@app.route("/services")
 def user_home():
+    # ensure user provided name first
+    if not session.get("user_name"):
+        return redirect("/")
     return render_template_string(user_template, categories=user_categories)
 
 @app.route("/ticket_page/<category>")
 def ticket_page(category):
+    # restrict direct access if no name in session
+    if not session.get("user_name"):
+        return redirect("/")
     # Protect: if a user navigates manually to a category that isn't shown, still allow if exists.
     if category not in queue:
         return "Invalid service", 404
@@ -438,7 +535,7 @@ def ticket_page(category):
 
 @app.route("/ticket_wait_time/<ticket_id>")
 def ticket_wait_time(ticket_id):
-    # compute simple estimate: 5 minutes per person ahead across all categories in their category only
+    # compute simple estimate: 5 minutes per person ahead (search queue for ticket)
     for cat in queue:
         for i, t in enumerate(queue[cat]):
             if t['id'] == ticket_id:
@@ -453,7 +550,8 @@ def display_page():
 @app.route("/admin")
 def admin_page():
     # admins can see all categories (including EMGS & PTPTN)
-    return render_template_string(admin_template, counters=counters, categories=list(queue.keys()))
+    names = load_user_names()
+    return render_template_string(admin_template, counters=counters, categories=list(queue.keys()), names=names)
 
 @app.route("/admin/add_counter", methods=["POST"])
 def add_counter():
