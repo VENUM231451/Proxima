@@ -10,13 +10,14 @@
 # - Names saved in names.txt (no duplicates, case-insensitive)
 # - Admin can clear names with a button
 # - "Medical Insurance" label changed to "Medical Insurance Inquiry" on user side
+# - COUNTER PAGE: shows Next in Line (first waiting ticket) live
 # --------------------------
 
 import os
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, redirect, render_template_string, url_for
+from flask import Flask, request, redirect, render_template_string, url_for, session
 from flask_socketio import SocketIO, emit, join_room
 import uuid
 
@@ -146,9 +147,8 @@ h1{color:var(--brand);margin:0 0 16px;font-size:22px}
 </div>
 
 <script>
-var userName = {{ user_name|tojson }};
 function selectService(category){
-    location.href = "/ticket_page/" + encodeURIComponent(category) + "?name=" + encodeURIComponent(userName);
+    location.href = "/ticket_page/" + encodeURIComponent(category);
 }
 </script>
 </body>
@@ -168,7 +168,6 @@ h1{color:#0D3B66;margin:0 0 8px}
 #ticket_number{font-size:42px;color:#0D3B66;margin:8px 0}
 .info{color:#333;margin:6px 0}
 .small{color:#666;margin-top:10px}
-.btn-enable{margin-top:12px;padding:8px 12px;border-radius:8px;border:none;background:#0D3B66;color:white;cursor:pointer}
 </style>
 </head>
 <body>
@@ -179,7 +178,6 @@ h1{color:#0D3B66;margin:0 0 8px}
   <div id="waiting" class="info">Waiting Time: calculating...</div>
   <div id="counter_info" class="info">Assigned Counter: Not yet</div>
   <div class="small">Please wait — you will be notified when your ticket is called.</div>
-  <button id="enable-sound" class="btn-enable">Enable Sound</button>
 </div>
 
 <!-- ticket ding audio element (uses static/ding.mp3 if present; fallback handled in JS) -->
@@ -197,15 +195,6 @@ ticketDing.preload = "auto";
 ticketDing.addEventListener('error', function(){
     ticketDing.src = "https://www.soundjay.com/buttons/sounds/button-16.mp3";
     ticketDing.load();
-});
-
-// Provide user an explicit click to enable sound (so browsers allow subsequent plays)
-document.getElementById('enable-sound').addEventListener('click', function(){
-    try {
-        ticketDing.currentTime = 0;
-        ticketDing.play().then(function(){ ticketDing.pause(); ticketDing.currentTime = 0; }).catch(function(){});
-    } catch(e){}
-    this.style.display = 'none';
 });
 
 function updateWaiting(){
@@ -238,15 +227,29 @@ counter_template = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;padding:20px}
-button{padding:10px 20px;border-radius:8px;border:none;background:#0D3B66;color:white;cursor:pointer}
+.header{display:flex;align-items:center;justify-content:space-between}
+h1{color:#0D3B66;margin:0}
+.box{background:white;padding:18px;border-radius:10px;box-shadow:0 6px 20px rgba(10,20,40,0.06);margin-top:16px}
+button{background:#0D3B66;color:white;border:none;padding:12px 18px;border-radius:8px;cursor:pointer}
 button:hover{background:#08457e}
+#current_ticket{font-size:20px;color:#0D3B66;margin-top:10px}
+#next_in_line{font-size:16px;color:#333;margin-top:6px}
+ul{padding-left:18px}
 </style>
 </head>
 <body>
-<h1>Counter: {{ counter.name }}</h1>
-<p>Services: {{ counter.categories|join(", ") }}</p>
-<div id="current">Current: {{ counter.current_ticket or "None" }}</div>
-<button onclick="callNext()">Call Next</button>
+<div class="header">
+  <h1>Counter: {{ counter.name }}</h1>
+  <div><strong>Services:</strong> {{ counter.categories|join(", ") }}</div>
+</div>
+
+<div class="box">
+  <div id="current_ticket">No ticket being served</div>
+  <div id="next_in_line">Next: None</div>
+  <h3>Waiting Queue</h3>
+  <ul id="queue_list"></ul>
+  <button onclick="callNext()">Call Next</button>
+</div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
@@ -254,10 +257,36 @@ var socket = io();
 var counterId = "{{ counter_id }}";
 socket.emit("join_counter_room", {counter_id: counterId});
 
+// update UI when queue_update arrives
 socket.on("queue_update", function(data){
     var c = data.counters[counterId];
-    if(c){
-        document.getElementById('current').innerText = "Current: " + (c.current_ticket || "None");
+    if(!c){
+        document.getElementById('current_ticket').innerText = "No ticket being served";
+        document.getElementById('next_in_line').innerText = "Next: None";
+        document.getElementById('queue_list').innerHTML = "";
+        return;
+    }
+    document.getElementById('current_ticket').innerText = c.current_ticket ? "Serving: " + c.current_ticket : "No ticket being served";
+
+    var waiting = [];
+    for(var i=0; i < c.categories.length; i++){
+        var cat = c.categories[i];
+        var catQueue = data.queue[cat] || [];
+        for(var j=0; j<catQueue.length; j++){
+            waiting.push(catQueue[j]);
+        }
+    }
+
+    // Next in line is the first waiting item's id (if any)
+    var next = waiting.length > 0 ? waiting[0].id : "None";
+    document.getElementById('next_in_line').innerText = "Next: " + next;
+
+    var qlist = document.getElementById('queue_list');
+    qlist.innerHTML = "";
+    for(var k=0; k<waiting.length; k++){
+        var li = document.createElement("li");
+        li.innerText = waiting[k].id + " (" + waiting[k].category + ")";
+        qlist.appendChild(li);
     }
 });
 
@@ -280,26 +309,17 @@ body{font-family:Inter,Arial,Helvetica,sans-serif;background:#0D3B66;color:white
 .container{max-width:1000px;margin:0 auto}
 .header{text-align:center;padding:12px}
 .header h1{margin:0;font-size:36px}
-.controls{display:flex;justify-content:center;gap:12px;margin-bottom:12px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:20px}
 .card{background:white;color:#0D3B66;padding:18px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px}
 .counter-name{font-size:18px;font-weight:600}
 .ticket-number{font-size:36px;margin-top:8px}
-.btn-enable{padding:10px 14px;border-radius:8px;border:none;background:#fff;color:#0D3B66;cursor:pointer}
 </style>
 </head>
 <body>
 <div class="container">
   <div class="header"><h1>Now Serving</h1></div>
-
-  <div class="controls">
-    <button id="enable-sound" class="btn-enable">Enable Sound</button>
-    <div style="align-self:center;color:#fff;font-size:14px">(Click to allow ding sound on this device)</div>
-  </div>
-
   <!-- audio element uses ding_url passed from Flask; fallback handled in JS -->
   <audio id="display-ding" src="{{ ding_url }}"></audio>
-
   <div class="grid" id="grid">
     {% for cid,c in counters.items() %}
       <div class="card" id="{{ cid }}">
@@ -322,16 +342,6 @@ dingElem.addEventListener('error', function(){
     dingElem.src = "https://www.soundjay.com/buttons/sounds/button-16.mp3";
     dingElem.load();
 });
-
-// Allow user to enable sound via a click (required on many browsers)
-document.getElementById('enable-sound').addEventListener('click', function(){
-    try {
-        dingElem.currentTime = 0;
-        dingElem.play().then(function(){ dingElem.pause(); dingElem.currentTime = 0; }).catch(function(){});
-    } catch(e){}
-    this.style.display = 'none';
-});
-
 var last = {};
 
 socket.on("display_update", function(data){
@@ -511,33 +521,33 @@ def call_next_ticket(counter_id):
 
 @app.route("/", methods=["GET", "POST"])
 def username_page():
-    # Always require name entry first (no session auto-skip).
+    # if user has already entered name, redirect to services
     if request.method == "GET":
+        if session.get("user_name"):
+            return redirect("/services")
         return render_template_string(username_template)
 
-    # POST -> save name and redirect to services with name in querystring
+    # POST -> save name and redirect to services
     first = request.form.get("first_name", "").strip()
     last = request.form.get("last_name", "").strip()
     if not first or not last:
         # if missing redirect back (template has required fields but double-check)
         return redirect("/")
     save_user_name(first, last)
-    full = f"{first} {last}"
-    return redirect(url_for("user_home", name=full))
+    session["user_name"] = f"{first} {last}"
+    return redirect("/services")
 
 @app.route("/services")
 def user_home():
-    # require name param in query string
-    name = request.args.get("name")
-    if not name:
+    # ensure user provided name first
+    if not session.get("user_name"):
         return redirect("/")
-    return render_template_string(user_template, categories=user_categories, user_name=name)
+    return render_template_string(user_template, categories=user_categories)
 
 @app.route("/ticket_page/<category>")
 def ticket_page(category):
-    # require name param in query string
-    name = request.args.get("name")
-    if not name:
+    # restrict direct access if no name in session
+    if not session.get("user_name"):
         return redirect("/")
     # Protect: if a user navigates manually to a category that isn't shown, still allow if exists.
     if category not in queue:
