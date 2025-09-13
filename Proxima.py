@@ -8,7 +8,6 @@
 # - DING sound plays on display (and user ticket) with static fallback
 # - NEW: Users must enter first + last name before seeing services
 # - Names saved in names.txt (no duplicates, case-insensitive), shown on admin dashboard
-# - NEW: Admin "Clear Names" button to remove names.txt during testing
 # --------------------------
 
 import os
@@ -135,13 +134,7 @@ h1{color:var(--brand);margin:0 0 16px;font-size:22px}
 <div class="container">
   <h1>Please select a service</h1>
   {% for cat in categories %}
-    <button class="service-btn" onclick="selectService('{{ cat }}')">
-      {% if cat == 'Medical Insurance' %}
-        Medical insurance inquiry
-      {% else %}
-        {{ cat }}
-      {% endif %}
-    </button>
+    <button class="service-btn" onclick="selectService('{{ cat }}')">{{ cat }}</button>
   {% endfor %}
   <div class="small">After selecting, you'll get a ticket number and estimated wait time.</div>
 </div>
@@ -379,8 +372,6 @@ button:hover{background:#08457e}
 .checkbox-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .checkbox-list label{background:#fff;padding:6px 8px;border-radius:6px;border:1px solid #ddd}
 .names-list{margin-top:18px;background:#fff;padding:12px;border-radius:8px;border:1px solid #e6e9ee}
-.clear-btn{background:#d9534f;margin-top:8px}
-.clear-btn:hover{background:#c9302c}
 </style>
 </head>
 <body>
@@ -419,9 +410,6 @@ button:hover{background:#08457e}
 
 <div class="names-list">
   <h3>Registered Users</h3>
-  <div>
-    <button class="clear-btn" onclick="clearNames()">Clear Names</button>
-  </div>
   {% if names %}
     <ul>
       {% for name in names %}
@@ -443,15 +431,6 @@ function deleteCounter(id){
     if(!confirm("Delete counter?")) return;
     fetch("/admin/delete_counter/"+id, {method:"POST"})
     .then(()=>{/* server will emit update */});
-}
-
-function clearNames(){
-    if(!confirm("Clear all saved names? This cannot be undone during testing.")) return;
-    fetch("/admin/clear_names", {method:"POST"})
-      .then(function(res){
-          if(res.ok) location.reload();
-          else alert("Failed to clear names");
-      }).catch(function(){ alert("Failed to clear names"); });
 }
 
 socket.on("queue_update", function(data){
@@ -593,17 +572,6 @@ def delete_counter(counter_id):
         del counters[counter_id]
         socketio.emit("display_update", get_display_state(), room="display")
         socketio.emit("queue_update", get_full_state(), room="all_counters")
-    return ("", 200)
-
-# NEW: clear names endpoint for admin
-@app.route("/admin/clear_names", methods=["POST"])
-def admin_clear_names():
-    if os.path.exists(NAMES_FILE):
-        try:
-            os.remove(NAMES_FILE)
-        except Exception:
-            # best-effort; ignore errors
-            pass
     return ("", 200)
 
 @app.route("/counter/<counter_id>")
