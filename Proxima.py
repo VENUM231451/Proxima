@@ -5,13 +5,14 @@
 # - PTPTN and EMGS Bank Letter hidden from user side only
 # - Admin joins all_counters room and receives live updates
 # - Uses SECRET_KEY and PORT from environment (Render-ready)
+# - DING sound plays on display (and user ticket) with static fallback
 # --------------------------
 
 import os
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, redirect, render_template_string
+from flask import Flask, request, redirect, render_template_string, url_for
 from flask_socketio import SocketIO, emit, join_room
 import uuid
 
@@ -20,7 +21,6 @@ app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "secret!")
 socketio = SocketIO(app, async_mode='eventlet')
 
 # ------------------ DATA ------------------
-# NOTE: Special Pass removed completely
 queue = {
     "Passport Submission": [],
     "Passport Collection": [],
@@ -51,7 +51,6 @@ user_categories = [
 ]
 
 # ------------------ TEMPLATES ------------------
-# All templates are inlined so this single file is plug-and-play.
 
 user_template = """
 <!DOCTYPE html>
@@ -113,15 +112,23 @@ h1{color:#0D3B66;margin:0 0 8px}
   <div class="small">Please wait — you will be notified when your ticket is called.</div>
 </div>
 
+<!-- ticket ding audio element (uses static/ding.mp3 if present; fallback handled in JS) -->
+<audio id="ticket-ding" src="{{ ding_url }}"></audio>
+
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
 var socket = io();
 var ticketId = "{{ ticket.id }}";
 socket.emit("join_ticket_room", {ticket_id: ticketId});
 
-// ding sound (online) - best-effort, browsers may block autoplay
-var ding = new Audio("https://www.soundjay.com/buttons/sounds/button-16.mp3");
-ding.preload = "auto";
+// ticket ding element & fallback
+var ticketDing = document.getElementById('ticket-ding');
+ticketDing.preload = "auto";
+ticketDing.addEventListener('error', function(){
+    // fallback to external URL if static fails
+    ticketDing.src = "https://www.soundjay.com/buttons/sounds/button-16.mp3";
+    ticketDing.load();
+});
 
 function updateWaiting(){
     fetch('/ticket_wait_time/' + ticketId)
@@ -136,7 +143,7 @@ updateWaiting();
 socket.on("ticket_called", function(data){
     if(data.id === ticketId){
         // try play ding
-        try { ding.currentTime = 0; ding.play().catch(()=>{}); } catch(e){}
+        try { ticketDing.currentTime = 0; ticketDing.play().catch(()=>{}); } catch(e){}
         document.getElementById('counter_info').innerText = "Assigned Counter: " + data.counter_name;
         alert("Ticket " + ticketId + " is being served at " + data.counter_name);
     }
@@ -234,6 +241,8 @@ body{font-family:Inter,Arial,Helvetica,sans-serif;background:#0D3B66;color:white
 <body>
 <div class="container">
   <div class="header"><h1>Now Serving</h1></div>
+  <!-- audio element uses ding_url passed from Flask; fallback handled in JS -->
+  <audio id="display-ding" src="{{ ding_url }}"></audio>
   <div class="grid" id="grid">
     {% for cid,c in counters.items() %}
       <div class="card" id="{{ cid }}">
@@ -249,9 +258,13 @@ body{font-family:Inter,Arial,Helvetica,sans-serif;background:#0D3B66;color:white
 var socket = io();
 socket.emit("join_display_room");
 
-// ding for display
-var ding = new Audio("https://www.soundjay.com/buttons/sounds/button-16.mp3");
-ding.preload = "auto";
+// DING audio element (static fallback -> external)
+var dingElem = document.getElementById('display-ding');
+dingElem.preload = "auto";
+dingElem.addEventListener('error', function(){
+    dingElem.src = "https://www.soundjay.com/buttons/sounds/button-16.mp3";
+    dingElem.load();
+});
 var last = {};
 
 socket.on("display_update", function(data){
@@ -259,7 +272,6 @@ socket.on("display_update", function(data){
         var item = data[cid];
         var el = document.getElementById(cid);
         if(!el){
-            // create if missing
             var grid = document.getElementById('grid');
             var card = document.createElement('div');
             card.className = 'card';
@@ -272,7 +284,7 @@ socket.on("display_update", function(data){
         var shown = item.current_ticket || 'None';
         var ticketDiv = el.querySelector('.ticket-number');
         if((last[cid] || 'None') !== shown && shown !== 'None'){
-            try { ding.currentTime = 0; ding.play().catch(()=>{}); } catch(e){}
+            try { dingElem.currentTime = 0; dingElem.play().catch(()=>{}); } catch(e){}
         }
         ticketDiv.innerText = shown;
         last[cid] = shown;
@@ -420,7 +432,9 @@ def ticket_page(category):
     if category not in queue:
         return "Invalid service", 404
     ticket = generate_ticket(category)
-    return render_template_string(ticket_page_template, ticket=ticket)
+    # pass ding_url (static) into template so audio uses it
+    ding_url = url_for('static', filename='ding.mp3')
+    return render_template_string(ticket_page_template, ticket=ticket, ding_url=ding_url)
 
 @app.route("/ticket_wait_time/<ticket_id>")
 def ticket_wait_time(ticket_id):
@@ -433,7 +447,8 @@ def ticket_wait_time(ticket_id):
 
 @app.route("/display")
 def display_page():
-    return render_template_string(display_template, counters=get_display_state())
+    ding_url = url_for('static', filename='ding.mp3')
+    return render_template_string(display_template, counters=get_display_state(), ding_url=ding_url)
 
 @app.route("/admin")
 def admin_page():
@@ -501,5 +516,4 @@ def handle_call_next(data):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    # debug=True is OK for Render free; you can set debug=False for production if preferred
     socketio.run(app, host="0.0.0.0", port=port, debug=True)
