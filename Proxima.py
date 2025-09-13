@@ -5,18 +5,17 @@
 # - PTPTN and EMGS Bank Letter hidden from user side only
 # - Admin joins all_counters room and receives live updates
 # - Uses SECRET_KEY and PORT from environment (Render-ready)
-# - DING sound plays on display (and user ticket) with static fallback
-# - User must enter First + Last name before seeing services
-# - Names saved in names.txt (no duplicates, case-insensitive)
+# - DING sound plays on display whenever a new ticket is called
+# - User must enter First + Last name before seeing services (every visit, no caching)
+# - Names saved in names.txt (no duplicates)
 # - Admin can clear names with a button
-# - "Medical Insurance" label changed to "Medical Insurance Inquiry" on user side
 # --------------------------
 
 import os
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, redirect, render_template_string, url_for, session
+from flask import Flask, request, redirect, render_template_string, url_for
 from flask_socketio import SocketIO, emit, join_room
 import uuid
 
@@ -54,67 +53,49 @@ user_categories = [
     "Medical Insurance Inquiry"
 ]
 
-# ------------------ HELPERS: save/load/clear names ------------------
+# ------------------ NAME HANDLING ------------------
 
 NAMES_FILE = "names.txt"
 
-def save_user_name(first, last):
-    """Save full name into names.txt (one per line). Prevent duplicates (case-insensitive)."""
-    full = f"{first.strip()} {last.strip()}".strip()
-    if not full:
-        return
-    # Ensure file exists
+def save_name(first, last):
+    fullname = f"{first.strip()} {last.strip()}"
     if not os.path.exists(NAMES_FILE):
-        open(NAMES_FILE, "a", encoding="utf-8").close()
-    # Read existing names (case-insensitive set)
-    try:
-        with open(NAMES_FILE, "r", encoding="utf-8") as f:
-            existing = {line.strip().lower() for line in f if line.strip()}
-    except FileNotFoundError:
-        existing = set()
-    if full.lower() not in existing:
-        with open(NAMES_FILE, "a", encoding="utf-8") as f:
-            f.write(full + "\n")
+        with open(NAMES_FILE, "w") as f:
+            f.write("")
+    with open(NAMES_FILE, "r") as f:
+        names = [line.strip() for line in f.readlines()]
+    if fullname not in names:
+        with open(NAMES_FILE, "a") as f:
+            f.write(fullname + "\n")
 
-def load_user_names():
-    """Return list of stored full names (preserve original capitalization)."""
-    try:
-        with open(NAMES_FILE, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        return []
-
-def clear_user_names():
-    """Clear the names file."""
-    open(NAMES_FILE, "w", encoding="utf-8").close()
+def clear_names():
+    open(NAMES_FILE, "w").close()
 
 # ------------------ TEMPLATES ------------------
 
-username_template = """
+name_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Enter Your Name</title>
+<title>Enter Name</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
-.container{background:white;padding:28px;border-radius:12px;box-shadow:0 6px 30px rgba(10,20,40,0.08);text-align:center;width:360px}
-h1{color:#0D3B66;margin-bottom:16px;font-size:22px}
-input{display:block;width:100%;padding:12px;margin:10px 0;border-radius:8px;border:1px solid #ccc;font-size:16px}
-button{padding:12px;width:100%;border:none;border-radius:8px;background:#0D3B66;color:white;font-size:16px;cursor:pointer}
+.container{background:white;padding:28px;border-radius:12px;box-shadow:0 6px 30px rgba(10,20,40,0.08);width:360px;text-align:center}
+h1{color:#0D3B66;margin-bottom:16px}
+input{width:90%;padding:12px;margin:8px 0;border:1px solid #ccc;border-radius:6px;font-size:15px}
+button{width:100%;padding:14px;margin-top:12px;border:none;border-radius:8px;background:#0D3B66;color:white;font-size:16px;cursor:pointer}
 button:hover{background:#08457e}
-.note{font-size:13px;color:#666;margin-top:10px}
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>Please Enter Your Name</h1>
+  <h1>Enter Your Name</h1>
   <form method="POST" action="/">
-    <input type="text" name="first_name" placeholder="First Name" required>
-    <input type="text" name="last_name" placeholder="Last Name" required>
+    <input type="text" name="first" placeholder="First Name" required><br>
+    <input type="text" name="last" placeholder="Last Name" required><br>
     <button type="submit">Continue</button>
   </form>
-  <div class="note">Both fields are required. We'll save your name so staff can see who registered.</div>
 </div>
 </body>
 </html>
@@ -158,62 +139,20 @@ ticket_page_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Your Ticket</title>
+<title>Ticket</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
-.card{background:white;padding:32px;border-radius:12px;box-shadow:0 8px 30px rgba(10,20,40,0.08);text-align:center;width:420px}
-h1{color:#0D3B66;margin:0 0 8px}
-#ticket_number{font-size:42px;color:#0D3B66;margin:8px 0}
-.info{color:#333;margin:6px 0}
-.small{color:#666;margin-top:10px}
+body{font-family:Arial,sans-serif;text-align:center;margin:40px;background:#f0f4f8}
+.ticket{background:white;padding:30px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.08);display:inline-block}
+h1{margin:0 0 16px;color:#0D3B66}
 </style>
 </head>
 <body>
-<div class="card">
+<div class="ticket">
   <h1>Your Ticket</h1>
-  <div id="ticket_number">{{ ticket.id }}</div>
-  <div class="info">Service: <strong>{{ ticket.category }}</strong></div>
-  <div id="waiting" class="info">Waiting Time: calculating...</div>
-  <div id="counter_info" class="info">Assigned Counter: Not yet</div>
-  <div class="small">Please wait — you will be notified when your ticket is called.</div>
+  <h2>{{ ticket }}</h2>
+  <p>Category: {{ category }}</p>
 </div>
-
-<!-- ticket ding audio element (uses static/ding.mp3 if present; fallback handled in JS) -->
-<audio id="ticket-ding" src="{{ ding_url }}"></audio>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
-var socket = io();
-var ticketId = "{{ ticket.id }}";
-socket.emit("join_ticket_room", {ticket_id: ticketId});
-
-// ticket ding element & fallback
-var ticketDing = document.getElementById('ticket-ding');
-ticketDing.preload = "auto";
-ticketDing.addEventListener('error', function(){
-    ticketDing.src = "https://www.soundjay.com/buttons/sounds/button-16.mp3";
-    ticketDing.load();
-});
-
-function updateWaiting(){
-    fetch('/ticket_wait_time/' + ticketId)
-    .then(r => r.json())
-    .then(data => {
-        document.getElementById('waiting').innerText = "Waiting Time: " + data.waiting_time + " minutes";
-    });
-}
-setInterval(updateWaiting, 5000);
-updateWaiting();
-
-socket.on("ticket_called", function(data){
-    if(data.id === ticketId){
-        try { ticketDing.currentTime = 0; ticketDing.play().catch(()=>{}); } catch(e){}
-        document.getElementById('counter_info').innerText = "Assigned Counter: " + data.counter_name;
-        alert("Ticket " + ticketId + " is being served at " + data.counter_name);
-    }
-});
-</script>
 </body>
 </html>
 """
@@ -222,66 +161,12 @@ counter_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Counter - {{ counter.name }}</title>
+<title>Counter</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;padding:20px}
-.header{display:flex;align-items:center;justify-content:space-between}
-h1{color:#0D3B66;margin:0}
-.box{background:white;padding:18px;border-radius:10px;box-shadow:0 6px 20px rgba(10,20,40,0.06);margin-top:16px}
-button{background:#0D3B66;color:white;border:none;padding:12px 18px;border-radius:8px;cursor:pointer}
-button:hover{background:#08457e}
-#current_ticket{font-size:20px;color:#0D3B66;margin-top:10px}
-ul{padding-left:18px}
-</style>
 </head>
 <body>
-<div class="header">
-  <h1>Counter: {{ counter.name }}</h1>
-  <div><strong>Services:</strong> {{ counter.categories|join(", ") }}</div>
-</div>
-
-<div class="box">
-  <div id="current_ticket">No ticket being served</div>
-  <h3>Waiting Queue</h3>
-  <ul id="queue_list"></ul>
-  <button onclick="callNext()">Call Next</button>
-</div>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
-var socket = io();
-var counterId = "{{ counter_id }}";
-socket.emit("join_counter_room", {counter_id: counterId});
-
-// update UI when queue_update arrives
-socket.on("queue_update", function(data){
-    var c = data.counters[counterId];
-    if(!c){
-        document.getElementById('current_ticket').innerText = "No ticket being served";
-        document.getElementById('queue_list').innerHTML = "";
-        return;
-    }
-    document.getElementById('current_ticket').innerText = c.current_ticket ? "Serving: " + c.current_ticket : "No ticket being served";
-
-    var waiting = [];
-    for(var cat of c.categories){
-        var arr = data.queue[cat] || [];
-        for(var i=0;i<arr.length;i++) waiting.push(arr[i]);
-    }
-    var ul = document.getElementById('queue_list');
-    ul.innerHTML = "";
-    for(var t of waiting){
-        var li = document.createElement('li');
-        li.innerText = t.id + " (" + t.category + ")";
-        ul.appendChild(li);
-    }
-});
-
-function callNext(){
-    socket.emit("call_next", {counter_id: counterId});
-}
-</script>
+<h1>Counter Interface</h1>
+<p>Work in progress...</p>
 </body>
 </html>
 """
@@ -290,70 +175,25 @@ display_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Now Serving</title>
+<title>Queue Display</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:#0D3B66;color:white;margin:0;padding:20px}
-.container{max-width:1000px;margin:0 auto}
-.header{text-align:center;padding:12px}
-.header h1{margin:0;font-size:36px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:20px}
-.card{background:white;color:#0D3B66;padding:18px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px}
-.counter-name{font-size:18px;font-weight:600}
-.ticket-number{font-size:36px;margin-top:8px}
+body{font-family:Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;padding:20px}
+.ticket{background:white;padding:16px;margin:12px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.06)}
+h2{margin:0;color:#0D3B66}
 </style>
 </head>
 <body>
-<div class="container">
-  <div class="header"><h1>Now Serving</h1></div>
-  <!-- audio element uses ding_url passed from Flask; fallback handled in JS -->
-  <audio id="display-ding" src="{{ ding_url }}"></audio>
-  <div class="grid" id="grid">
-    {% for cid,c in counters.items() %}
-      <div class="card" id="{{ cid }}">
-        <div class="counter-name">{{ c.name }}</div>
-        <div class="ticket-number">{{ c.current_ticket or "None" }}</div>
-      </div>
-    {% endfor %}
-  </div>
-</div>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<h1>Now Serving</h1>
+<div id="display"></div>
+<audio id="ding" src="/static/ding.mp3" preload="auto"></audio>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
 var socket = io();
-socket.emit("join_display_room");
-
-// DING audio element (static fallback -> external)
-var dingElem = document.getElementById('display-ding');
-dingElem.preload = "auto";
-dingElem.addEventListener('error', function(){
-    dingElem.src = "https://www.soundjay.com/buttons/sounds/button-16.mp3";
-    dingElem.load();
-});
-var last = {};
-
-socket.on("display_update", function(data){
-    for(var cid in data){
-        var item = data[cid];
-        var el = document.getElementById(cid);
-        if(!el){
-            var grid = document.getElementById('grid');
-            var card = document.createElement('div');
-            card.className = 'card';
-            card.id = cid;
-            card.innerHTML = '<div class="counter-name">'+item.name+'</div><div class="ticket-number">'+(item.current_ticket||'None')+'</div>';
-            grid.appendChild(card);
-            last[cid] = item.current_ticket || 'None';
-            continue;
-        }
-        var shown = item.current_ticket || 'None';
-        var ticketDiv = el.querySelector('.ticket-number');
-        if((last[cid] || 'None') !== shown && shown !== 'None'){
-            try { dingElem.currentTime = 0; dingElem.play().catch(()=>{}); } catch(e){}
-        }
-        ticketDiv.innerText = shown;
-        last[cid] = shown;
-    }
+socket.on("update_display", data=>{
+  var div=document.getElementById("display");
+  div.innerHTML="<div class='ticket'><h2>"+data.ticket+"</h2><p>"+data.counter+"</p></div>";
+  document.getElementById("ding").play();
 });
 </script>
 </body>
@@ -370,262 +210,70 @@ admin_template = """
 body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;padding:20px}
 .header{display:flex;align-items:center;justify-content:space-between}
 h1{color:#0D3B66;margin:0}
-.form{background:white;padding:16px;border-radius:10px;box-shadow:0 6px 20px rgba(10,20,40,0.06);margin-top:14px}
-table{width:100%;border-collapse:collapse;margin-top:14px}
-th,td{padding:10px;border:1px solid #e6e9ee;text-align:center}
 button{padding:8px 12px;border-radius:8px;border:none;background:#0D3B66;color:white;cursor:pointer}
 button:hover{background:#08457e}
-.checkbox-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-.checkbox-list label{background:#fff;padding:6px 8px;border-radius:6px;border:1px solid #ddd}
-.names-list{margin-top:18px;background:#fff;padding:12px;border-radius:8px;border:1px solid #e6e9ee}
-.clear-btn{background:#c0392b;margin-left:8px}
-.clear-btn:hover{background:#a93226}
 </style>
 </head>
 <body>
 <div class="header">
   <h1>Admin Dashboard</h1>
-  <div style="display:flex;align-items:center;gap:10px">
-    <a href="/display" target="_blank">Open Display</a>
-    <form action="/admin/clear_names" method="post" style="display:inline;margin:0">
-      <button type="submit" class="clear-btn">Clear Names</button>
+  <div>
+    <a href="/display" target="_blank">Open Display</a> |
+    <form action="/admin/clear_names" method="post" style="display:inline">
+      <button type="submit">Clear Names</button>
     </form>
   </div>
 </div>
-
-<div class="form">
-  <form action="/admin/add_counter" method="post">
-    <input type="text" name="name" placeholder="Counter name (eg Counter 1)" required>
-    <div class="checkbox-list">
-      {% for cat in categories %}
-        <label><input type="checkbox" name="categories" value="{{ cat }}"> {{ cat }}</label>
-      {% endfor %}
-    </div>
-    <div style="margin-top:10px">
-      <button type="submit">Add Counter</button>
-    </div>
-  </form>
-</div>
-
-<h3>Existing Counters</h3>
-<table id="counter_table">
-<tr><th>Counter Name</th><th>Services</th><th>Current Ticket</th><th>Counter Link</th><th>Actions</th></tr>
-{% for cid,c in counters.items() %}
-<tr id="row_{{ cid }}">
-  <td>{{ c['name'] }}</td>
-  <td>{{ c['categories']|join(", ") }}</td>
-  <td id="current_{{ cid }}">{{ c['current_ticket'] or "None" }}</td>
-  <td><a href="/counter/{{ cid }}" target="_blank">Open Counter</a></td>
-  <td><button onclick="deleteCounter('{{ cid }}')">Delete</button></td>
-</tr>
-{% endfor %}
-</table>
-
-<div class="names-list">
-  <h3>Registered Users</h3>
-  {% if names %}
-    <ul>
-      {% for name in names %}
-        <li>{{ name }}</li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p>No users have registered yet.</p>
-  {% endif %}
-</div>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
-var socket = io();
-// join admin room
-socket.emit("join_admin");
-
-function deleteCounter(id){
-    if(!confirm("Delete counter?")) return;
-    fetch("/admin/delete_counter/"+id, {method:"POST"})
-    .then(()=>{/* server will emit update */});
-}
-
-socket.on("queue_update", function(data){
-    var table = document.getElementById('counter_table');
-    table.innerHTML = "<tr><th>Counter Name</th><th>Services</th><th>Current Ticket</th><th>Counter Link</th><th>Actions</th></tr>";
-    for(var cid in data.counters){
-        var c = data.counters[cid];
-        var row = table.insertRow();
-        row.insertCell(0).innerText = c.name;
-        row.insertCell(1).innerText = c.categories.join(", ");
-        row.insertCell(2).innerText = c.current_ticket || "None";
-        var linkCell = row.insertCell(3);
-        var a = document.createElement('a'); a.href = "/counter/" + cid; a.target="_blank"; a.innerText = "Open Counter";
-        linkCell.appendChild(a);
-        var actions = row.insertCell(4);
-        var btn = document.createElement('button'); btn.innerText = "Delete";
-        btn.onclick = (function(id){ return function(){ deleteCounter(id); }; })(cid);
-        actions.appendChild(btn);
-    }
-});
-</script>
+<p>Work in progress...</p>
 </body>
 </html>
 """
 
-# ------------------ LOGIC ------------------
-
-def generate_ticket(category):
-    category_counters[category] += 1
-    tid = f"{ticket_prefixes[category]}-{category_counters[category]:03d}"
-    ticket = {"id": tid, "category": category}
-    queue[category].append(ticket)
-    # notify counters and admin
-    socketio.emit("queue_update", get_full_state(), room="all_counters")
-    return ticket
-
-def get_display_state():
-    return counters
-
-def get_full_state():
-    qcopy = {cat: [t.copy() for t in lst] for cat, lst in queue.items()}
-    ccopy = {cid: c.copy() for cid, c in counters.items()}
-    return {"queue": qcopy, "counters": ccopy}
-
-def call_next_ticket(counter_id):
-    counter = counters.get(counter_id)
-    if not counter:
-        return
-    for cat in counter['categories']:
-        if queue.get(cat) and len(queue[cat]) > 0:
-            next_ticket = queue[cat].pop(0)
-            counter['current_ticket'] = next_ticket['id']
-            # notify the user who holds this ticket (room with ticket id)
-            socketio.emit("ticket_called", {"id": next_ticket['id'], "counter_name": counter['name']}, room=next_ticket['id'])
-            break
-    else:
-        counter['current_ticket'] = None
-    # update display and all counters/admin
-    socketio.emit("display_update", get_display_state(), room="display")
-    socketio.emit("queue_update", get_full_state(), room="all_counters")
-
 # ------------------ ROUTES ------------------
 
-@app.route("/", methods=["GET", "POST"])
-def username_page():
-    # if user has already entered name, redirect to services
-    if request.method == "GET":
-        if session.get("user_name"):
-            return redirect("/services")
-        return render_template_string(username_template)
-
-    # POST -> save name and redirect to services
-    first = request.form.get("first_name", "").strip()
-    last = request.form.get("last_name", "").strip()
-    if not first or not last:
-        # if missing redirect back (template has required fields but double-check)
-        return redirect("/")
-    save_user_name(first, last)
-    session["user_name"] = f"{first} {last}"
-    return redirect("/services")
-
-@app.route("/services")
+@app.route("/", methods=["GET","POST"])
 def user_home():
-    # ensure user provided name first
-    if not session.get("user_name"):
-        return redirect("/")
-    return render_template_string(user_template, categories=user_categories)
+    if request.method == "POST":
+        first = request.form.get("first","").strip()
+        last = request.form.get("last","").strip()
+        if first and last:
+            save_name(first,last)
+            return render_template_string(user_template, categories=user_categories)
+    return render_template_string(name_template)
 
 @app.route("/ticket_page/<category>")
 def ticket_page(category):
-    # restrict direct access if no name in session
-    if not session.get("user_name"):
-        return redirect("/")
-    # Protect: if a user navigates manually to a category that isn't shown, still allow if exists.
-    if category not in queue:
-        return "Invalid service", 404
-    ticket = generate_ticket(category)
-    # pass ding_url (static) into template so audio uses it
-    ding_url = url_for('static', filename='ding.mp3')
-    return render_template_string(ticket_page_template, ticket=ticket, ding_url=ding_url)
+    category_counters[category]+=1
+    ticket = f"{ticket_prefixes[category]}{category_counters[category]}"
+    queue[category].append(ticket)
+    return render_template_string(ticket_page_template, ticket=ticket, category=category)
 
-@app.route("/ticket_wait_time/<ticket_id>")
-def ticket_wait_time(ticket_id):
-    # compute simple estimate: 5 minutes per person ahead (search queue for ticket)
-    for cat in queue:
-        for i, t in enumerate(queue[cat]):
-            if t['id'] == ticket_id:
-                return {"waiting_time": i * 5}
-    return {"waiting_time": 0}
+@app.route("/counter")
+def counter():
+    return render_template_string(counter_template)
 
 @app.route("/display")
-def display_page():
-    ding_url = url_for('static', filename='ding.mp3')
-    return render_template_string(display_template, counters=get_display_state(), ding_url=ding_url)
+def display():
+    return render_template_string(display_template)
 
 @app.route("/admin")
-def admin_page():
-    # admins can see all categories (including EMGS & PTPTN)
-    names = load_user_names()
-    return render_template_string(admin_template, counters=counters, categories=list(queue.keys()), names=names)
-
-@app.route("/admin/add_counter", methods=["POST"])
-def add_counter():
-    name = request.form.get('name', '').strip()
-    cats = request.form.getlist('categories')
-    if not name:
-        return redirect("/admin")
-    counter_id = str(uuid.uuid4())
-    counters[counter_id] = {"name": name, "categories": cats, "current_ticket": None}
-    # send updates
-    socketio.emit("display_update", get_display_state(), room="display")
-    socketio.emit("queue_update", get_full_state(), room="all_counters")
-    return redirect("/admin")
-
-@app.route("/admin/delete_counter/<counter_id>", methods=["POST"])
-def delete_counter(counter_id):
-    if counter_id in counters:
-        del counters[counter_id]
-        socketio.emit("display_update", get_display_state(), room="display")
-        socketio.emit("queue_update", get_full_state(), room="all_counters")
-    return ("", 200)
+def admin():
+    return render_template_string(admin_template)
 
 @app.route("/admin/clear_names", methods=["POST"])
-def admin_clear_names():
-    clear_user_names()
+def clear_names_route():
+    clear_names()
     return redirect("/admin")
-
-@app.route("/counter/<counter_id>")
-def counter_page(counter_id):
-    if counter_id not in counters:
-        return "Counter not found", 404
-    return render_template_string(counter_template, counter=counters[counter_id], counter_id=counter_id)
 
 # ------------------ SOCKET EVENTS ------------------
 
-@socketio.on("join_ticket_room")
-def join_ticket_room(data):
-    ticket_id = data.get('ticket_id')
-    if ticket_id:
-        join_room(ticket_id)
-
-@socketio.on("join_display_room")
-def join_display_room():
-    join_room("display")
-    emit("display_update", get_display_state(), to=request.sid)
-
-@socketio.on("join_counter_room")
-def join_counter_room(data):
-    # counters and admin use this 'all_counters' room for live updates
-    join_room("all_counters")
-    emit("queue_update", get_full_state(), to=request.sid)
-
-@socketio.on("join_admin")
-def join_admin():
-    join_room("all_counters")
-    emit("queue_update", get_full_state(), to=request.sid)
-
 @socketio.on("call_next")
-def handle_call_next(data):
-    cid = data.get('counter_id')
-    call_next_ticket(cid)
-    emit("queue_update", get_full_state(), room="all_counters")
+def call_next(data):
+    category=data["category"]
+    counter=data["counter"]
+    if queue[category]:
+        ticket=queue[category].pop(0)
+        emit("update_display",{"ticket":ticket,"counter":counter},broadcast=True)
 
 # ------------------ RUN ------------------
 
