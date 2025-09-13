@@ -6,8 +6,10 @@
 # - Admin joins all_counters room and receives live updates
 # - Uses SECRET_KEY and PORT from environment (Render-ready)
 # - DING sound plays on display (and user ticket) with static fallback
-# - NEW: Users must enter first + last name before seeing services
-# - Names saved in names.txt (no duplicates, case-insensitive), shown on admin dashboard
+# - User must enter First + Last name before seeing services
+# - Names saved in names.txt (no duplicates, case-insensitive)
+# - Admin can clear names with a button
+# - "Medical Insurance" label changed to "Medical Insurance Inquiry" on user side
 # --------------------------
 
 import os
@@ -27,7 +29,7 @@ queue = {
     "Passport Submission": [],
     "Passport Collection": [],
     "I-Kad Collection": [],
-    "Medical Insurance": [],
+    "Medical Insurance Inquiry": [],
     "EMGS Bank Letter": [],   # admin-only on user side
     "PTPTN": []               # admin-only on user side
 }
@@ -36,7 +38,7 @@ ticket_prefixes = {
     "Passport Submission": "PS",
     "Passport Collection": "PC",
     "I-Kad Collection": "IK",
-    "Medical Insurance": "MI",
+    "Medical Insurance Inquiry": "MI",
     "EMGS Bank Letter": "BL",
     "PTPTN": "PT"
 }
@@ -49,10 +51,10 @@ user_categories = [
     "Passport Submission",
     "Passport Collection",
     "I-Kad Collection",
-    "Medical Insurance"
+    "Medical Insurance Inquiry"
 ]
 
-# ------------------ HELPERS: save/load names ------------------
+# ------------------ HELPERS: save/load/clear names ------------------
 
 NAMES_FILE = "names.txt"
 
@@ -63,7 +65,7 @@ def save_user_name(first, last):
         return
     # Ensure file exists
     if not os.path.exists(NAMES_FILE):
-        open(NAMES_FILE, "a").close()
+        open(NAMES_FILE, "a", encoding="utf-8").close()
     # Read existing names (case-insensitive set)
     try:
         with open(NAMES_FILE, "r", encoding="utf-8") as f:
@@ -81,6 +83,10 @@ def load_user_names():
             return [line.strip() for line in f if line.strip()]
     except FileNotFoundError:
         return []
+
+def clear_user_names():
+    """Clear the names file."""
+    open(NAMES_FILE, "w", encoding="utf-8").close()
 
 # ------------------ TEMPLATES ------------------
 
@@ -372,12 +378,19 @@ button:hover{background:#08457e}
 .checkbox-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .checkbox-list label{background:#fff;padding:6px 8px;border-radius:6px;border:1px solid #ddd}
 .names-list{margin-top:18px;background:#fff;padding:12px;border-radius:8px;border:1px solid #e6e9ee}
+.clear-btn{background:#c0392b;margin-left:8px}
+.clear-btn:hover{background:#a93226}
 </style>
 </head>
 <body>
 <div class="header">
   <h1>Admin Dashboard</h1>
-  <div><a href="/display" target="_blank">Open Display</a></div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <a href="/display" target="_blank">Open Display</a>
+    <form action="/admin/clear_names" method="post" style="display:inline;margin:0">
+      <button type="submit" class="clear-btn">Clear Names</button>
+    </form>
+  </div>
 </div>
 
 <div class="form">
@@ -468,7 +481,6 @@ def generate_ticket(category):
     return ticket
 
 def get_display_state():
-    # return counters as-is (no deep copy needed for this in-memory demo)
     return counters
 
 def get_full_state():
@@ -573,6 +585,11 @@ def delete_counter(counter_id):
         socketio.emit("display_update", get_display_state(), room="display")
         socketio.emit("queue_update", get_full_state(), room="all_counters")
     return ("", 200)
+
+@app.route("/admin/clear_names", methods=["POST"])
+def admin_clear_names():
+    clear_user_names()
+    return redirect("/admin")
 
 @app.route("/counter/<counter_id>")
 def counter_page(counter_id):
