@@ -95,20 +95,100 @@ username_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Enter Your Name</title>
+<title>Enter Your Name | Proxima</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
-.container{background:white;padding:28px;border-radius:12px;box-shadow:0 6px 30px rgba(10,20,40,0.08);text-align:center;width:360px}
-h1{color:#0D3B66;margin-bottom:16px;font-size:22px}
-input{display:block;width:100%;padding:12px;margin:10px 0;border-radius:8px;border:1px solid #ccc;font-size:16px}
-button{padding:12px;width:100%;border:none;border-radius:8px;background:#0D3B66;color:white;font-size:16px;cursor:pointer}
-button:hover{background:#08457e}
-.note{font-size:13px;color:#666;margin-top:10px}
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #dbeafe;
+  --accent: #f97316;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --success: #10b981;
+  --card-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  --transition: all 0.3s ease;
+}
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: var(--text);
+}
+.container {
+  background: var(--card-bg);
+  padding: 2.5rem;
+  border-radius: 1rem;
+  box-shadow: var(--card-shadow);
+  text-align: center;
+  width: 100%;
+  max-width: 400px;
+  margin: 1rem;
+}
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.5px;
+}
+h1 {
+  color: var(--text);
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+input {
+  display: block;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  margin: 0.75rem 0;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  font-size: 1rem;
+  transition: var(--transition);
+  box-sizing: border-box;
+}
+input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+button {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--primary);
+  color: white;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  margin-top: 0.5rem;
+}
+button:hover {
+  background: var(--primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+.note {
+  font-size: 0.875rem;
+  color: var(--text-light);
+  margin-top: 1rem;
+  line-height: 1.5;
+}
 </style>
 </head>
 <body>
 <div class="container">
+  <div class="logo">Proxima</div>
   <h1>Please Enter Your Name</h1>
   <form method="POST" action="/">
     <input type="text" name="first_name" placeholder="First Name" required>
@@ -125,20 +205,98 @@ user_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Service Selection</title>
+<title>Service Selection | Proxima</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{--brand:#0D3B66;--brand-dark:#08457e;background:#f0f4f8}
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:var(--brand-light,#f0f4f8);margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100vh}
-.container{width:360px;background:white;padding:28px;border-radius:12px;box-shadow:0 6px 30px rgba(10,20,40,0.08);text-align:center}
-h1{color:var(--brand);margin:0 0 16px;font-size:22px}
-.service-btn{display:block;width:100%;padding:14px;margin:10px 0;border-radius:8px;border:none;background:var(--brand);color:#fff;font-size:16px;cursor:pointer}
-.service-btn:hover{background:var(--brand-dark)}
-.small{font-size:13px;color:#666;margin-top:8px}
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #dbeafe;
+  --accent: #f97316;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --success: #10b981;
+  --card-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  --transition: all 0.3s ease;
+}
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: var(--text);
+}
+.container {
+  width: 100%;
+  max-width: 400px;
+  background: var(--card-bg);
+  padding: 2.5rem;
+  border-radius: 1rem;
+  box-shadow: var(--card-shadow);
+  text-align: center;
+  margin: 1rem;
+}
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.5px;
+}
+h1 {
+  color: var(--text);
+  margin: 0 0 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.service-btn {
+  display: block;
+  width: 100%;
+  padding: 1rem 1.25rem;
+  margin: 0.75rem 0;
+  border-radius: 0.5rem;
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+  position: relative;
+}
+.service-btn:after {
+  content: '→';
+  position: absolute;
+  right: 1.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: var(--transition);
+}
+.service-btn:hover {
+  background: var(--primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+.service-btn:hover:after {
+  right: 1rem;
+}
+.small {
+  font-size: 0.875rem;
+  color: var(--text-light);
+  margin-top: 1.5rem;
+  line-height: 1.5;
+}
 </style>
 </head>
 <body>
 <div class="container">
+  <div class="logo">Proxima</div>
   <h1>Please select a service</h1>
   {% for cat in categories %}
     <button class="service-btn" onclick="selectService('{{ cat }}')">{{ cat }}</button>
@@ -159,26 +317,171 @@ ticket_page_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Your Ticket</title>
+<title>Your Ticket | Proxima</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
-.card{background:white;padding:32px;border-radius:12px;box-shadow:0 8px 30px rgba(10,20,40,0.08);text-align:center;width:420px}
-h1{color:#0D3B66;margin:0 0 8px}
-#ticket_number{font-size:42px;color:#0D3B66;margin:8px 0}
-.info{color:#333;margin:6px 0}
-.small{color:#666;margin-top:10px}
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #dbeafe;
+  --accent: #f97316;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --success: #10b981;
+  --card-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  --transition: all 0.3s ease;
+}
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: var(--text);
+}
+.card {
+  background: var(--card-bg);
+  padding: 2.5rem;
+  border-radius: 1rem;
+  box-shadow: var(--card-shadow);
+  text-align: center;
+  width: 100%;
+  max-width: 420px;
+  margin: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+.card:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0.25rem;
+  background: var(--primary);
+}
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.5px;
+}
+h1 {
+  color: var(--text);
+  margin: 0 0 1rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+#ticket_number {
+  font-size: 3rem;
+  color: var(--primary);
+  margin: 1.5rem 0;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  position: relative;
+  display: inline-block;
+  padding: 0.5rem 2rem;
+}
+#ticket_number:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--primary-light);
+  border-radius: 0.5rem;
+  z-index: -1;
+}
+.info {
+  color: var(--text);
+  margin: 1rem 0;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.info strong {
+  color: var(--primary-dark);
+}
+.status-container {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: #f1f5f9;
+  border-radius: 0.5rem;
+}
+#waiting, #counter_info {
+  margin: 0.5rem 0;
+}
+.small {
+  color: var(--text-light);
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.pulse {
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(37, 99, 235, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+  }
+}
+.called {
+  color: var(--success) !important;
+  animation: scale 0.5s ease;
+}
+@keyframes scale {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+#notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: var(--success);
+  color: white;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  display: none;
+  z-index: 100;
+  animation: slideIn 0.3s ease;
+}
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
 </style>
 </head>
 <body>
 <div class="card">
+  <div class="logo">Proxima</div>
   <h1>Your Ticket</h1>
-  <div id="ticket_number">{{ ticket.id }}</div>
+  <div id="ticket_number" class="pulse">{{ ticket.id }}</div>
   <div class="info">Service: <strong>{{ ticket.category }}</strong></div>
-  <div id="waiting" class="info">Waiting Time: calculating...</div>
-  <div id="counter_info" class="info">Assigned Counter: Not yet</div>
+  <div class="status-container">
+    <div id="waiting" class="info">Waiting Time: calculating...</div>
+    <div id="counter_info" class="info">Assigned Counter: Not yet</div>
+  </div>
   <div class="small">Please wait — you will be notified when your ticket is called.</div>
 </div>
+
+<!-- Notification element -->
+<div id="notification"></div>
 
 <!-- ticket ding audio element (uses static/ding.mp3 if present; fallback handled in JS) -->
 <audio id="ticket-ding" src="{{ ding_url }}"></audio>
@@ -197,11 +500,37 @@ ticketDing.addEventListener('error', function(){
     ticketDing.load();
 });
 
+// Request notification permission
+if ("Notification" in window) {
+    Notification.requestPermission();
+}
+
+function showNotification(title, message) {
+    // Browser notification
+    if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, { body: message });
+    }
+    
+    // In-page notification
+    var notificationEl = document.getElementById('notification');
+    notificationEl.textContent = message;
+    notificationEl.style.display = 'block';
+    
+    setTimeout(function() {
+        notificationEl.style.display = 'none';
+    }, 10000);
+}
+
 function updateWaiting(){
     fetch('/ticket_wait_time/' + ticketId)
     .then(r => r.json())
     .then(data => {
-        document.getElementById('waiting').innerText = "Waiting Time: " + data.waiting_time + " minutes";
+        var waitingEl = document.getElementById('waiting');
+        if (data.waiting_time === 0) {
+            waitingEl.innerHTML = "Waiting Time: <strong>You're next!</strong>";
+        } else {
+            waitingEl.innerText = "Waiting Time: " + data.waiting_time + " minutes";
+        }
     });
 }
 setInterval(updateWaiting, 5000);
@@ -209,9 +538,29 @@ updateWaiting();
 
 socket.on("ticket_called", function(data){
     if(data.id === ticketId){
-        try { ticketDing.currentTime = 0; ticketDing.play().catch(()=>{}); } catch(e){}
-        document.getElementById('counter_info').innerText = "Assigned Counter: " + data.counter_name;
-        alert("Ticket " + ticketId + " is being served at " + data.counter_name);
+        try { 
+            ticketDing.currentTime = 0; 
+            ticketDing.play().catch(function(e) {
+                console.log("Audio play error:", e);
+            }); 
+        } catch(e){}
+        
+        // Update UI
+        document.getElementById('counter_info').innerHTML = "Assigned Counter: <strong>" + data.counter_name + "</strong>";
+        var ticketNumber = document.getElementById('ticket_number');
+        ticketNumber.classList.remove('pulse');
+        ticketNumber.classList.add('called');
+        
+        // Show notification
+        showNotification(
+            "Your ticket is ready!", 
+            "Ticket " + ticketId + " is now being served at " + data.counter_name
+        );
+        
+        // Vibrate if supported
+        if ("vibrate" in navigator) {
+            navigator.vibrate([200, 100, 200]);
+        }
     }
 });
 </script>
@@ -223,24 +572,134 @@ counter_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Counter - {{ counter.name }}</title>
+<title>Counter - {{ counter.name }} | Proxima</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;padding:20px}
-.header{display:flex;align-items:center;justify-content:space-between}
-h1{color:#0D3B66;margin:0}
-.box{background:white;padding:18px;border-radius:10px;box-shadow:0 6px 20px rgba(10,20,40,0.06);margin-top:16px}
-button{background:#0D3B66;color:white;border:none;padding:12px 18px;border-radius:8px;cursor:pointer}
-button:hover{background:#08457e}
-#current_ticket{font-size:20px;color:#0D3B66;margin-top:10px}
-#next_in_line{font-size:16px;color:#333;margin-top:6px}
-ul{padding-left:18px}
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #dbeafe;
+  --accent: #f97316;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --success: #10b981;
+  --card-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  --transition: all 0.3s ease;
+}
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  margin: 0;
+  padding: 2rem 1.5rem;
+  color: var(--text);
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 1rem;
+  letter-spacing: -0.5px;
+}
+h1 {
+  color: var(--text);
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+.box {
+  background: var(--card-bg);
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: var(--card-shadow);
+  margin-top: 1rem;
+}
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.875rem 1.5rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: var(--transition);
+}
+button:hover {
+  background: var(--primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+#current_ticket {
+  font-size: 1.5rem;
+  color: var(--primary);
+  margin: 1rem 0;
+  font-weight: 600;
+  padding: 1rem;
+  background: var(--primary-light);
+  border-radius: 0.5rem;
+  text-align: center;
+}
+#next_in_line {
+  font-size: 1.125rem;
+  color: var(--text);
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: #f1f5f9;
+  border-radius: 0.5rem;
+  text-align: center;
+}
+.services {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--primary-light);
+  border-radius: 2rem;
+  color: var(--primary);
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+h3 {
+  color: var(--text);
+  margin: 1.5rem 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+ul {
+  padding-left: 0;
+  list-style: none;
+  margin: 1rem 0 1.5rem;
+}
+li {
+  margin: 0.5rem 0;
+  padding: 0.75rem 1rem;
+  background: #f1f5f9;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+}
+li:before {
+  content: '•';
+  color: var(--primary);
+  font-weight: bold;
+  margin-right: 0.5rem;
+}
 </style>
 </head>
 <body>
+<div class="logo">Proxima</div>
 <div class="header">
   <h1>Counter: {{ counter.name }}</h1>
-  <div><strong>Services:</strong> {{ counter.categories|join(", ") }}</div>
+  <div class="services">{{ counter.categories|join(" • ") }}</div>
 </div>
 
 <div class="box">
@@ -248,7 +707,7 @@ ul{padding-left:18px}
   <div id="next_in_line">Next: None</div>
   <h3>Waiting Queue</h3>
   <ul id="queue_list"></ul>
-  <button onclick="callNext()">Call Next</button>
+  <button onclick="callNext()">Call Next Ticket</button>
 </div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -302,69 +761,193 @@ display_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Now Serving</title>
+<title>Display | Proxima</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:#0D3B66;color:white;margin:0;padding:20px}
-.container{max-width:1000px;margin:0 auto}
-.header{text-align:center;padding:12px}
-.header h1{margin:0;font-size:36px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:20px}
-.card{background:white;color:#0D3B66;padding:18px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px}
-.counter-name{font-size:18px;font-weight:600}
-.ticket-number{font-size:36px;margin-top:8px}
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #dbeafe;
+  --accent: #f97316;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --success: #10b981;
+  --card-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  --transition: all 0.3s ease;
+}
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+}
+.header {
+  background: var(--primary);
+  color: white;
+  padding: 1rem 1.5rem;
+  text-align: center;
+  font-size: 1.75rem;
+  font-weight: 600;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 10;
+}
+.display-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  padding: 1.5rem;
+  height: calc(100vh - 4.75rem);
+  overflow-y: auto;
+}
+.counter-card {
+  background: var(--card-bg);
+  border-radius: 1rem;
+  box-shadow: var(--card-shadow);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+.counter-card:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0.25rem;
+  background: var(--primary);
+}
+.counter-name {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 1rem;
+  text-align: center;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.ticket-display {
+  font-size: 4rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+  margin: auto 0;
+  padding: 2rem 0;
+  letter-spacing: -1px;
+  transition: all 0.5s ease;
+}
+.empty-ticket {
+  color: var(--text-light);
+  font-size: 2.5rem;
+  opacity: 0.5;
+}
+.flash {
+  animation: flash 1s;
+}
+@keyframes flash {
+  0%, 100% { background-color: var(--card-bg); }
+  50% { background-color: var(--primary-light); }
+}
+@media (max-width: 768px) {
+  .display-container {
+    grid-template-columns: 1fr;
+  }
+  .ticket-display {
+    font-size: 3rem;
+    padding: 1.5rem 0;
+  }
+}
 </style>
 </head>
 <body>
-<div class="container">
-  <div class="header"><h1>Now Serving</h1></div>
-  <!-- audio element uses ding_url passed from Flask; fallback handled in JS -->
-  <audio id="display-ding" src="{{ ding_url }}"></audio>
-  <div class="grid" id="grid">
-    {% for cid,c in counters.items() %}
-      <div class="card" id="{{ cid }}">
-        <div class="counter-name">{{ c.name }}</div>
-        <div class="ticket-number">{{ c.current_ticket or "None" }}</div>
-      </div>
-    {% endfor %}
+<div class="header">Proxima Queue Display</div>
+<div class="display-container" id="counters">
+  {% for counter in counters %}
+  <div class="counter-card">
+    <div class="counter-name">{{ counter.name }}</div>
+    <div class="ticket-display" id="counter_{{ counter.id }}">
+      {% if counter.current_ticket %}
+        {{ counter.current_ticket }}
+      {% else %}
+        <span class="empty-ticket">-</span>
+      {% endif %}
+    </div>
   </div>
+  {% endfor %}
 </div>
+
+<audio id="ding" src="{{ ding_url }}" preload="auto"></audio>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
 var socket = io();
+var ding = document.getElementById('ding');
+
 socket.emit("join_display_room");
 
-// DING audio element (static fallback -> external)
-var dingElem = document.getElementById('display-ding');
-dingElem.preload = "auto";
-dingElem.addEventListener('error', function(){
-    dingElem.src = "https://www.soundjay.com/buttons/sounds/button-16.mp3";
-    dingElem.load();
-});
-var last = {};
-
 socket.on("display_update", function(data){
-    for(var cid in data){
-        var item = data[cid];
-        var el = document.getElementById(cid);
-        if(!el){
-            var grid = document.getElementById('grid');
-            var card = document.createElement('div');
-            card.className = 'card';
-            card.id = cid;
-            card.innerHTML = '<div class="counter-name">'+item.name+'</div><div class="ticket-number">'+(item.current_ticket||'None')+'</div>';
-            grid.appendChild(card);
-            last[cid] = item.current_ticket || 'None';
-            continue;
+    var countersDiv = document.getElementById('counters');
+    countersDiv.innerHTML = '';
+    
+    for(var i=0; i < data.length; i++){
+        var counter = data[i];
+        var card = document.createElement('div');
+        card.className = 'counter-card';
+        
+        var nameDiv = document.createElement('div');
+        nameDiv.className = 'counter-name';
+        nameDiv.innerText = counter.name;
+        
+        var ticketDiv = document.createElement('div');
+        ticketDiv.className = 'ticket-display';
+        ticketDiv.id = 'counter_' + counter.id;
+        
+        if(counter.current_ticket){
+            ticketDiv.innerText = counter.current_ticket;
+        } else {
+            var span = document.createElement('span');
+            span.className = 'empty-ticket';
+            span.innerText = '-';
+            ticketDiv.appendChild(span);
         }
-        var shown = item.current_ticket || 'None';
-        var ticketDiv = el.querySelector('.ticket-number');
-        if((last[cid] || 'None') !== shown && shown !== 'None'){
-            try { dingElem.currentTime = 0; dingElem.play().catch(()=>{}); } catch(e){}
-        }
-        ticketDiv.innerText = shown;
-        last[cid] = shown;
+        
+        card.appendChild(nameDiv);
+        card.appendChild(ticketDiv);
+        countersDiv.appendChild(card);
+    }
+});
+
+socket.on("ticket_called", function(data){
+    try { 
+        ding.currentTime = 0; 
+        ding.play().catch(function(e){console.log("Audio play error:", e)}); 
+    } catch(e){}
+    
+    var counterElem = document.getElementById('counter_' + data.counter_id);
+    if(counterElem){
+        counterElem.innerText = data.id;
+        // Flash effect
+        var card = counterElem.parentElement;
+        card.classList.add('flash');
+        setTimeout(function(){
+            card.classList.remove('flash');
+        }, 1000);
+        
+        // Highlight the ticket
+        counterElem.style.transition = 'all 0.5s ease';
+        counterElem.style.color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+        counterElem.style.transform = 'scale(1.1)';
+        setTimeout(function(){
+            counterElem.style.transform = 'scale(1)';
+        }, 1000);
     }
 });
 </script>
@@ -376,29 +959,212 @@ admin_template = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Admin Dashboard</title>
+<title>Admin Dashboard | Proxima</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f0f4f8;margin:0;padding:20px}
-.header{display:flex;align-items:center;justify-content:space-between}
-h1{color:#0D3B66;margin:0}
-.form{background:white;padding:16px;border-radius:10px;box-shadow:0 6px 20px rgba(10,20,40,0.06);margin-top:14px}
-table{width:100%;border-collapse:collapse;margin-top:14px}
-th,td{padding:10px;border:1px solid #e6e9ee;text-align:center}
-button{padding:8px 12px;border-radius:8px;border:none;background:#0D3B66;color:white;cursor:pointer}
-button:hover{background:#08457e}
-.checkbox-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-.checkbox-list label{background:#fff;padding:6px 8px;border-radius:6px;border:1px solid #ddd}
-.names-list{margin-top:18px;background:#fff;padding:12px;border-radius:8px;border:1px solid #e6e9ee}
-.clear-btn{background:#c0392b;margin-left:8px}
-.clear-btn:hover{background:#a93226}
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #dbeafe;
+  --accent: #f97316;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --success: #10b981;
+  --danger: #ef4444;
+  --card-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  --transition: all 0.3s ease;
+}
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  margin: 0;
+  padding: 2rem 1.5rem;
+  color: var(--text);
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 1rem;
+  letter-spacing: -0.5px;
+}
+h1 {
+  color: var(--text);
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+h3 {
+  color: var(--text);
+  margin: 1.5rem 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.form {
+  background: var(--card-bg);
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: var(--card-shadow);
+  margin-top: 1rem;
+}
+input[type="text"] {
+  display: block;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  margin: 0 0 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  font-size: 1rem;
+  transition: var(--transition);
+  box-sizing: border-box;
+}
+input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  background: var(--card-bg);
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+th {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  font-weight: 600;
+  text-align: left;
+  padding: 1rem;
+}
+th:first-child {
+  border-top-left-radius: 1rem;
+}
+th:last-child {
+  border-top-right-radius: 1rem;
+}
+th, td {
+  padding: 1rem;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+}
+tr:last-child td {
+  border-bottom: none;
+}
+tr:last-child td:first-child {
+  border-bottom-left-radius: 1rem;
+}
+tr:last-child td:last-child {
+  border-bottom-right-radius: 1rem;
+}
+button {
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: var(--primary);
+  color: white;
+  cursor: pointer;
+  font-weight: 500;
+  transition: var(--transition);
+  font-size: 0.875rem;
+}
+button:hover {
+  background: var(--primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+.checkbox-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.checkbox-list label {
+  background: #f1f5f9;
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 0.875rem;
+}
+.checkbox-list label:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+.names-list {
+  margin-top: 1.5rem;
+  background: var(--card-bg);
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: var(--card-shadow);
+}
+.clear-btn {
+  background: var(--danger);
+  margin-left: 0.5rem;
+}
+.clear-btn:hover {
+  background: #dc2626;
+}
+.action-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+a:hover {
+  color: var(--primary-dark);
+  text-decoration: underline;
+}
+.display-btn:before {
+  content: '⤴';
+  font-size: 1.125rem;
+}
+.user-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.user-list li {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  list-style: none;
+  font-size: 0.875rem;
+}
 </style>
 </head>
 <body>
+<div class="logo">Proxima</div>
 <div class="header">
   <h1>Admin Dashboard</h1>
-  <div style="display:flex;align-items:center;gap:10px">
-    <a href="/display" target="_blank">Open Display</a>
+  <div class="action-btns">
+    <a href="/display" target="_blank" class="display-btn">Open Display</a>
     <form action="/admin/clear_names" method="post" style="display:inline;margin:0">
       <button type="submit" class="clear-btn">Clear Names</button>
     </form>
@@ -406,6 +1172,7 @@ button:hover{background:#08457e}
 </div>
 
 <div class="form">
+  <h3>Add New Counter</h3>
   <form action="/admin/add_counter" method="post">
     <input type="text" name="name" placeholder="Counter name (eg Counter 1)" required>
     <div class="checkbox-list">
@@ -413,7 +1180,7 @@ button:hover{background:#08457e}
         <label><input type="checkbox" name="categories" value="{{ cat }}"> {{ cat }}</label>
       {% endfor %}
     </div>
-    <div style="margin-top:10px">
+    <div style="margin-top:1rem">
       <button type="submit">Add Counter</button>
     </div>
   </form>
@@ -436,7 +1203,7 @@ button:hover{background:#08457e}
 <div class="names-list">
   <h3>Registered Users</h3>
   {% if names %}
-    <ul>
+    <ul class="user-list">
       {% for name in names %}
         <li>{{ name }}</li>
       {% endfor %}
@@ -493,7 +1260,7 @@ def generate_ticket(category):
     return ticket
 
 def get_display_state():
-    return counters
+    return list(counters.values())
 
 def get_full_state():
     qcopy = {cat: [t.copy() for t in lst] for cat, lst in queue.items()}
@@ -510,6 +1277,8 @@ def call_next_ticket(counter_id):
             counter['current_ticket'] = next_ticket['id']
             # notify the user who holds this ticket (room with ticket id)
             socketio.emit("ticket_called", {"id": next_ticket['id'], "counter_name": counter['name']}, room=next_ticket['id'])
+            # Also notify the display to play sound and update
+            socketio.emit("ticket_called", {"id": next_ticket['id'], "counter_name": counter['name'], "counter_id": counter_id}, room="display")
             break
     else:
         counter['current_ticket'] = None
@@ -552,7 +1321,27 @@ def ticket_page(category):
     # Protect: if a user navigates manually to a category that isn't shown, still allow if exists.
     if category not in queue:
         return "Invalid service", 404
-    ticket = generate_ticket(category)
+        
+    # Check if user already has a ticket for this category in session
+    session_ticket_key = f"ticket_{category}"
+    existing_ticket = session.get(session_ticket_key)
+    
+    # If user already has a ticket for this category, find it in the queue
+    if existing_ticket:
+        for t in queue[category]:
+            if t['id'] == existing_ticket:
+                ticket = t
+                break
+        else:
+            # Ticket not found in queue (might have been called or removed)
+            # Generate a new ticket
+            ticket = generate_ticket(category)
+            session[session_ticket_key] = ticket['id']
+    else:
+        # First time requesting a ticket for this category
+        ticket = generate_ticket(category)
+        session[session_ticket_key] = ticket['id']
+        
     # pass ding_url (static) into template so audio uses it
     ding_url = url_for('static', filename='ding.mp3')
     return render_template_string(ticket_page_template, ticket=ticket, ding_url=ding_url)
@@ -637,7 +1426,8 @@ def join_admin():
 def handle_call_next(data):
     cid = data.get('counter_id')
     call_next_ticket(cid)
-    emit("queue_update", get_full_state(), room="all_counters")
+    # This line is redundant as call_next_ticket already emits queue_update
+    # emit("queue_update", get_full_state(), room="all_counters")
 
 # ------------------ RUN ------------------
 
