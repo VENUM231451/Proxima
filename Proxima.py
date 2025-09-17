@@ -930,15 +930,63 @@ socket.on("display_update", function(data){
 
 // Function to announce ticket using speech synthesis
 function announceTicket(ticketId, counterName) {
-    // Format the ticket ID for better pronunciation
-    let formattedTicket = ticketId.split('-').join(' ');
+    // Format the ticket ID for better pronunciation by separating each character
+    let parts = ticketId.split('-');
+    let formattedTicket = '';
+    
+    if (parts.length === 2) {
+        // Before dash - pronounce each letter separately
+        let letters = parts[0];
+        for (let i = 0; i < letters.length; i++) {
+            formattedTicket += letters[i] + ' ';
+        }
+        
+        // Add a slight pause
+        formattedTicket += ', ';
+        
+        // After dash - pronounce each number separately
+        let numbers = parts[1];
+        for (let i = 0; i < numbers.length; i++) {
+            formattedTicket += numbers[i] + ' ';
+        }
+    } else {
+        // If there's no dash, try to identify letters and numbers
+        let ticketText = ticketId;
+        let result = '';
+        
+        // Find where numbers start (first digit in the string)
+        let numberStartIndex = ticketText.search(/\d/);
+        
+        if (numberStartIndex !== -1) {
+            // Process letters (before first digit)
+            for (let i = 0; i < numberStartIndex; i++) {
+                result += ticketText[i] + ' ';
+            }
+            
+            // Add a slight pause
+            result += ', ';
+            
+            // Process numbers (from first digit onwards)
+            for (let i = numberStartIndex; i < ticketText.length; i++) {
+                result += ticketText[i] + ' ';
+            }
+            
+            formattedTicket = result;
+        } else {
+            // No numbers found, just space out all characters
+            for (let i = 0; i < ticketText.length; i++) {
+                formattedTicket += ticketText[i] + ' ';
+            }
+        }
+    }
+    
     let announcement = `Ticket ${formattedTicket}, please proceed to ${counterName}`;
     
     // Check if browser supports speech synthesis
     if ('speechSynthesis' in window) {
         // Create a new speech synthesis utterance
         let utterance = new SpeechSynthesisUtterance(announcement);
-        utterance.rate = 0.9; // Slightly slower rate for clarity
+        utterance.rate = 0.8; // Slightly slower rate for clarity with spaced characters
         utterance.pitch = 1;
         utterance.volume = 1;
         
