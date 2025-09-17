@@ -885,11 +885,14 @@ body {
 </div>
 
 <audio id="ding" src="{{ ding_url }}" preload="auto"></audio>
+<!-- Add speech synthesis for announcements -->
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
 var socket = io();
 var ding = document.getElementById('ding');
+// Set lower volume for the ding sound
+ding.volume = 0.4; // 40% volume
 
 socket.emit("join_display_room");
 
@@ -925,11 +928,49 @@ socket.on("display_update", function(data){
     }
 });
 
+// Function to announce ticket using speech synthesis
+function announceTicket(ticketId, counterName) {
+    // Format the ticket ID for better pronunciation
+    let formattedTicket = ticketId.split('-').join(' ');
+    let announcement = `Ticket ${formattedTicket}, please proceed to ${counterName}`;
+    
+    // Check if browser supports speech synthesis
+    if ('speechSynthesis' in window) {
+        // Create a new speech synthesis utterance
+        let utterance = new SpeechSynthesisUtterance(announcement);
+        utterance.rate = 0.9; // Slightly slower rate for clarity
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        
+        // Get available voices and set to a clear voice if available
+        let voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+            // Try to find a good English voice
+            let englishVoice = voices.find(voice => 
+                voice.lang.includes('en') && voice.name.includes('Female'));
+            if (englishVoice) utterance.voice = englishVoice;
+        }
+        
+        // Wait for the ding sound to complete before speaking
+        // Typical ding sound is about 1-2 seconds, so wait 2 seconds
+        setTimeout(() => {
+            window.speechSynthesis.speak(utterance);
+        }, 2000); // Wait 2 seconds after the ding starts
+    }
+}
+
 socket.on("ticket_called", function(data){
     try { 
-        ding.currentTime = 0; 
+        ding.currentTime = 0;
+        // Play the ding sound first
         ding.play().catch(function(e){console.log("Audio play error:", e)}); 
+        // Don't cut off the ding sound - let it play naturally
+        // Remove the timeout that was cutting it off
     } catch(e){}
+    
+    // Announce the ticket vocally AFTER the ding completes
+    // We'll handle this in the announceTicket function
+    announceTicket(data.id, data.counter_name);
     
     var counterElem = document.getElementById('counter_' + data.counter_id);
     if(counterElem){
@@ -1139,6 +1180,12 @@ a:hover {
   color: var(--primary-dark);
   text-decoration: underline;
 }
+.btn-danger {
+    background-color: #e74c3c;
+}
+.btn-danger:hover {
+    background-color: #c0392b;
+}
 .display-btn:before {
   content: '⤴';
   font-size: 1.125rem;
@@ -1168,6 +1215,7 @@ a:hover {
     <form action="/admin/clear_names" method="post" style="display:inline;margin:0">
       <button type="submit" class="clear-btn">Clear Names</button>
     </form>
+    <a href="/admin/logout" class="btn btn-danger">Logout</a>
   </div>
 </div>
 
@@ -1248,6 +1296,91 @@ socket.on("queue_update", function(data){
 </html>
 """
 
+admin_login_template = """<!DOCTYPE html>
+<html>
+<head>
+    <title>Proxima Admin Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2980b9;
+            --text-color: #333;
+            --bg-color: #f5f5f5;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: var(--text-color);
+        }
+        .login-container {
+            max-width: 400px;
+            margin: 50px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: var(--primary-color);
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: var(--secondary-color);
+        }
+        .error-message {
+            color: #e74c3c;
+            margin-top: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>Proxima Admin</h1>
+        <form method="POST" action="/admin/login">
+            <div class="form-group">
+                <label for="passcode">Admin Passcode</label>
+                <input type="password" id="passcode" name="passcode" required>
+            </div>
+            {% if error %}
+            <div class="error-message">{{ error }}</div>
+            {% endif %}
+            <button type="submit">Login</button>
+        </form>
+    </div>
+</body>
+</html>"""
+
 # ------------------ LOGIC ------------------
 
 def generate_ticket(category):
@@ -1287,6 +1420,24 @@ def call_next_ticket(counter_id):
     socketio.emit("queue_update", get_full_state(), room="all_counters")
 
 # ------------------ ROUTES ------------------
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    error = None
+    
+    # If already authenticated, redirect to admin page
+    if session.get("admin_authenticated"):
+        return redirect("/admin")
+    
+    if request.method == "POST":
+        passcode = request.form.get("passcode")
+        if passcode == "apuvisa2025":
+            session["admin_authenticated"] = True
+            return redirect("/admin")
+        else:
+            error = "Invalid passcode"
+    
+    return render_template_string(admin_login_template, error=error)
 
 @app.route("/", methods=["GET", "POST"])
 def username_page():
@@ -1362,12 +1513,20 @@ def display_page():
 
 @app.route("/admin")
 def admin_page():
+    # Check if admin is authenticated
+    if not session.get("admin_authenticated"):
+        return redirect("/admin/login")
+        
     # admins can see all categories (including EMGS & PTPTN)
     names = load_user_names()
     return render_template_string(admin_template, counters=counters, categories=list(queue.keys()), names=names)
 
 @app.route("/admin/add_counter", methods=["POST"])
 def add_counter():
+    # Check if admin is authenticated
+    if not session.get("admin_authenticated"):
+        return redirect("/admin/login")
+        
     name = request.form.get('name', '').strip()
     cats = request.form.getlist('categories')
     if not name:
@@ -1381,6 +1540,10 @@ def add_counter():
 
 @app.route("/admin/delete_counter/<counter_id>", methods=["POST"])
 def delete_counter(counter_id):
+    # Check if admin is authenticated
+    if not session.get("admin_authenticated"):
+        return redirect("/admin/login")
+        
     if counter_id in counters:
         del counters[counter_id]
         socketio.emit("display_update", get_display_state(), room="display")
@@ -1389,8 +1552,17 @@ def delete_counter(counter_id):
 
 @app.route("/admin/clear_names", methods=["POST"])
 def admin_clear_names():
+    # Check if admin is authenticated
+    if not session.get("admin_authenticated"):
+        return redirect("/admin/login")
+        
     clear_user_names()
     return redirect("/admin")
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("admin_authenticated", None)
+    return redirect("/admin/login")
 
 @app.route("/counter/<counter_id>")
 def counter_page(counter_id):
@@ -1419,6 +1591,10 @@ def join_counter_room(data):
 
 @socketio.on("join_admin")
 def join_admin():
+    # Check if admin is authenticated
+    if not session.get("admin_authenticated"):
+        return
+        
     join_room("all_counters")
     emit("queue_update", get_full_state(), to=request.sid)
 
