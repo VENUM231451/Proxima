@@ -17,7 +17,7 @@ import os
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, redirect, render_template_string, url_for, session
+from flask import Flask, request, redirect, render_template_string, url_for, session, flash
 from flask_socketio import SocketIO, emit, join_room
 import uuid
 
@@ -218,6 +218,7 @@ user_template = """
   --bg: #f8fafc;
   --card-bg: #ffffff;
   --success: #10b981;
+  --danger: #ef4444;
   --card-shadow: 0 10px 30px rgba(0,0,0,0.08);
   --transition: all 0.3s ease;
 }
@@ -292,12 +293,27 @@ h1 {
   margin-top: 1.5rem;
   line-height: 1.5;
 }
+.alert {
+  background-color: #fee2e2;
+  color: var(--danger);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+  text-align: left;
+  border-left: 4px solid var(--danger);
+}
 </style>
 </head>
 <body>
 <div class="container">
   <div class="logo">Proxima</div>
   <h1>Please select a service</h1>
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
   {% for cat in categories %}
     <button class="service-btn" onclick="selectService('{{ cat }}')">{{ cat }}</button>
   {% endfor %}
@@ -930,63 +946,15 @@ socket.on("display_update", function(data){
 
 // Function to announce ticket using speech synthesis
 function announceTicket(ticketId, counterName) {
-    // Format the ticket ID for better pronunciation by separating each character
-    let parts = ticketId.split('-');
-    let formattedTicket = '';
-    
-    if (parts.length === 2) {
-        // Before dash - pronounce each letter separately
-        let letters = parts[0];
-        for (let i = 0; i < letters.length; i++) {
-            formattedTicket += letters[i] + ' ';
-        }
-        
-        // Add a slight pause
-        formattedTicket += ', ';
-        
-        // After dash - pronounce each number separately
-        let numbers = parts[1];
-        for (let i = 0; i < numbers.length; i++) {
-            formattedTicket += numbers[i] + ' ';
-        }
-    } else {
-        // If there's no dash, try to identify letters and numbers
-        let ticketText = ticketId;
-        let result = '';
-        
-        // Find where numbers start (first digit in the string)
-        let numberStartIndex = ticketText.search(/\d/);
-        
-        if (numberStartIndex !== -1) {
-            // Process letters (before first digit)
-            for (let i = 0; i < numberStartIndex; i++) {
-                result += ticketText[i] + ' ';
-            }
-            
-            // Add a slight pause
-            result += ', ';
-            
-            // Process numbers (from first digit onwards)
-            for (let i = numberStartIndex; i < ticketText.length; i++) {
-                result += ticketText[i] + ' ';
-            }
-            
-            formattedTicket = result;
-        } else {
-            // No numbers found, just space out all characters
-            for (let i = 0; i < ticketText.length; i++) {
-                formattedTicket += ticketText[i] + ' ';
-            }
-        }
-    }
-    
+    // Format the ticket ID for better pronunciation
+    let formattedTicket = ticketId.split('-').join(' ');
     let announcement = `Ticket ${formattedTicket}, please proceed to ${counterName}`;
     
     // Check if browser supports speech synthesis
     if ('speechSynthesis' in window) {
         // Create a new speech synthesis utterance
         let utterance = new SpeechSynthesisUtterance(announcement);
-        utterance.rate = 0.8; // Slightly slower rate for clarity with spaced characters
+        utterance.rate = 0.9; // Slightly slower rate for clarity
         utterance.pitch = 1;
         utterance.volume = 1;
         
@@ -1489,10 +1457,15 @@ def admin_login():
 
 @app.route("/", methods=["GET", "POST"])
 def username_page():
-    # if user has already entered name, redirect to services
+    # Always show the name form on GET requests, regardless of session state
     if request.method == "GET":
-        if session.get("user_name"):
-            return redirect("/services")
+        # Clear any existing user_name from session
+        if "user_name" in session:
+            session.pop("user_name")
+        # Clear any existing ticket keys from session
+        for key in list(session.keys()):
+            if key.startswith("ticket_"):
+                session.pop(key)
         return render_template_string(username_template)
 
     # POST -> save name and redirect to services
@@ -1510,7 +1483,7 @@ def user_home():
     # ensure user provided name first
     if not session.get("user_name"):
         return redirect("/")
-    return render_template_string(user_template, categories=user_categories)
+    return render_template_string(user_template, categories=user_categories, messages=session.pop('_flashes', []))
 
 @app.route("/ticket_page/<category>")
 def ticket_page(category):
@@ -1520,27 +1493,40 @@ def ticket_page(category):
     # Protect: if a user navigates manually to a category that isn't shown, still allow if exists.
     if category not in queue:
         return "Invalid service", 404
-        
-    # Check if user already has a ticket for this category in session
-    session_ticket_key = f"ticket_{category}"
-    existing_ticket = session.get(session_ticket_key)
     
-    # If user already has a ticket for this category, find it in the queue
-    if existing_ticket:
-        for t in queue[category]:
-            if t['id'] == existing_ticket:
-                ticket = t
-                break
-        else:
-            # Ticket not found in queue (might have been called or removed)
-            # Generate a new ticket
-            ticket = generate_ticket(category)
-            session[session_ticket_key] = ticket['id']
-    else:
-        # First time requesting a ticket for this category
-        ticket = generate_ticket(category)
-        session[session_ticket_key] = ticket['id']
-        
+    # Check if user has any unserved tickets in any category
+    for cat in queue.keys():
+        ticket_key = f"ticket_{cat}"
+        if ticket_key in session:
+            ticket_id = session[ticket_key]
+            # Check if this ticket is still in the queue (unserved)
+            ticket_in_queue = False
+            for t in queue[cat]:
+                if t['id'] == ticket_id:
+                    ticket_in_queue = True
+                    # If trying to get a ticket for the same category, show the existing ticket
+                    if cat == category:
+                        ding_url = url_for('static', filename='ding.mp3')
+                        return render_template_string(ticket_page_template, ticket=t, ding_url=ding_url)
+                    # If trying to get a ticket for a different category, redirect to services page
+                    # with a message that they need to wait for current ticket to be served
+                    else:
+                        flash(f"You already have an active ticket for {cat}. Please wait until it's served before getting a new ticket.")
+                        return redirect("/services")
+            
+            # If we get here, the ticket is no longer in the queue (it's been served)
+            # If it's the same category, redirect to services page
+            if cat == category:
+                flash(f"Your ticket for {cat} has been served. You can now get a new ticket if needed.")
+                # Remove the ticket from session
+                session.pop(ticket_key)
+                return redirect("/services")
+    
+    # If we get here, user has no unserved tickets, so generate a new one
+    ticket = generate_ticket(category)
+    session_ticket_key = f"ticket_{category}"
+    session[session_ticket_key] = ticket['id']
+    
     # pass ding_url (static) into template so audio uses it
     ding_url = url_for('static', filename='ding.mp3')
     return render_template_string(ticket_page_template, ticket=ticket, ding_url=ding_url)
