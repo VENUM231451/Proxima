@@ -17,7 +17,7 @@ import os
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, redirect, render_template_string, url_for, session
+from flask import Flask, request, redirect, render_template_string, url_for, session, make_response, jsonify
 from flask_socketio import SocketIO, emit, join_room
 import uuid
 
@@ -26,6 +26,7 @@ app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "secret!")
 socketio = SocketIO(app, async_mode='eventlet')
 
 # ------------------ DATA ------------------
+# Main category queues
 queue = {
     "Passport Submission": [],
     "Passport Collection": [],
@@ -34,6 +35,9 @@ queue = {
     "EMGS Bank Letter": [],   # admin-only on user side
     "PTPTN": []               # admin-only on user side
 }
+
+# Counter-specific queues
+counter_queues = {}  # counter_id -> {category -> [tickets]}
 
 # Global arrival counter to track order of all tickets
 global_arrival_counter = 0
@@ -47,6 +51,10 @@ ticket_prefixes = {
     "PTPTN": "PT"
 }
 
+# Counter-specific numbering system
+counter_numbers = {}  # counter_id -> {category -> current_number}
+
+# Category counters for initial ticket generation
 category_counters = {k: 0 for k in queue.keys()}
 counters = {}  # counter_id -> dict: name, categories, current_ticket
 
@@ -318,7 +326,7 @@ h1 {
   {% for cat in categories %}
     <button class="service-btn" onclick="selectService('{{ cat }}')">{{ cat }}</button>
   {% endfor %}
-  <div class="small">After selecting, you'll get a ticket number and estimated wait time.</div>
+  <div class="small">After selecting, you'll get a ticket number.</div>
 </div>
 
 <script>
@@ -342,6 +350,7 @@ ticket_page_template = """
   --primary-dark: #1d4ed8;
   --primary-light: #dbeafe;
   --accent: #f97316;
+  --danger: #ef4444;
   --text: #1e293b;
   --text-light: #64748b;
   --bg: #f8fafc;
@@ -482,23 +491,140 @@ h1 {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+.delete-btn {
+  background-color: var(--danger);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 1.5rem;
+  transition: var(--transition);
+}
+
+.delete-btn:hover {
+  background-color: #dc2626;
+  transform: translateY(-2px);
+}
+
+.delete-btn:active {
+  transform: translateY(0);
+}
+
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background-color: var(--card-bg);
+  padding: 2rem;
+  border-radius: 1rem;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  box-shadow: var(--card-shadow);
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.modal-btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+}
+
+.confirm-btn {
+  background-color: var(--danger);
+  color: white;
+}
+
+.cancel-btn {
+  background-color: var(--text-light);
+  color: white;
+}
 </style>
 </head>
 <body>
+<!-- Prevent back button with warning -->
+<script>
+  var ticketServed = false;
+  
+  // Prevent back button navigation
+  history.pushState(null, null, document.URL);
+  window.addEventListener('popstate', function (event) {
+    if (!ticketServed) {
+      // Show warning and prevent navigation
+      alert("Your ticket has not been served yet. Please wait for your ticket to be called or delete it if you want to leave.");
+      history.pushState(null, null, document.URL);
+    }
+  });
+  
+  // Prevent page refresh with warning
+  window.addEventListener('beforeunload', function (event) {
+    if (!ticketServed) {
+      event.preventDefault();
+      event.returnValue = 'Your ticket has not been served yet. Are you sure you want to leave?';
+      return 'Your ticket has not been served yet. Are you sure you want to leave?';
+    }
+  });
+</script>
 <div class="card">
   <div class="logo">Proxima <span class="highlight">X</span> APU</div>
   <h1>Your Ticket</h1>
+  {% if warning_message %}
+  <div class="warning-message" style="background-color: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 14px;">
+    {{ warning_message }}
+  </div>
+  {% endif %}
   <div id="ticket_number" class="pulse">{{ ticket.id }}</div>
   <div class="info">Service: <strong>{{ ticket.category }}</strong></div>
   <div class="status-container">
-    <div id="waiting" class="info">Waiting Time: calculating...</div>
     <div id="counter_info" class="info">Assigned Counter: Not yet</div>
   </div>
   <div class="small">Please wait — you will be notified when your ticket is called.</div>
+  <button id="delete-ticket" class="delete-btn">Delete Ticket</button>
 </div>
 
 <!-- Notification element -->
 <div id="notification"></div>
+
+<!-- Required deletion warning -->
+{% if require_deletion %}
+<div id="deletion-warning" style="background-color: var(--danger); color: white; padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; text-align: center; font-weight: bold;">
+  You must delete this ticket before requesting a new one in another category.
+</div>
+{% endif %}
+
+<!-- Confirmation Modal -->
+<div id="delete-modal" class="modal">
+  <div class="modal-content">
+    <h2>Delete Ticket</h2>
+    <p>Are you sure you want to delete your ticket? This action cannot be undone.</p>
+    <div class="modal-buttons">
+      <button id="confirm-delete" class="modal-btn confirm-btn">Yes, Delete</button>
+      <button id="cancel-delete" class="modal-btn cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- ticket ding audio element (uses static/ding.mp3 if present; fallback handled in JS) -->
 <audio id="ticket-ding" src="{{ ding_url }}"></audio>
@@ -538,20 +664,7 @@ function showNotification(title, message) {
     }, 10000);
 }
 
-function updateWaiting(){
-    fetch('/ticket_wait_time/' + ticketId)
-    .then(r => r.json())
-    .then(data => {
-        var waitingEl = document.getElementById('waiting');
-        if (data.waiting_time === 0) {
-            waitingEl.innerHTML = "Waiting Time: <strong>You're next!</strong>";
-        } else {
-            waitingEl.innerText = "Waiting Time: " + data.waiting_time + " minutes";
-        }
-    });
-}
-setInterval(updateWaiting, 5000);
-updateWaiting();
+
 
 socket.on("ticket_called", function(data){
     if(data.id === ticketId){
@@ -574,11 +687,50 @@ socket.on("ticket_called", function(data){
             "Ticket " + ticketId + " is now being served at " + data.counter_name
         );
         
+        // Mark ticket as served - allow navigation
+        ticketServed = true;
+        
         // Vibrate if supported
         if ("vibrate" in navigator) {
             navigator.vibrate([200, 100, 200]);
         }
     }
+});
+
+// Delete ticket functionality
+document.getElementById('delete-ticket').addEventListener('click', function() {
+    var modal = document.getElementById('delete-modal');
+    modal.style.display = 'flex';
+});
+
+document.getElementById('cancel-delete').addEventListener('click', function() {
+    var modal = document.getElementById('delete-modal');
+    modal.style.display = 'none';
+});
+
+document.getElementById('confirm-delete').addEventListener('click', function() {
+    // Send delete request to server
+    fetch('/delete_ticket/' + ticketId, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification("Ticket Deleted", "Your ticket has been successfully deleted");
+            // Mark ticket as deleted - allow navigation
+            ticketServed = true;
+            // Redirect to home page after a short delay
+            setTimeout(function() {
+                window.location.href = '/';
+            }, 2000);
+        } else {
+            showNotification("Error", data.message || "Failed to delete ticket");
+        }
+    })
+    .catch(error => {
+        showNotification("Error", "An error occurred while deleting the ticket");
+        console.error('Error:', error);
+    });
 });
 </script>
 </body>
@@ -1043,99 +1195,97 @@ socket.on("display_update", function(data){
 
 // Function to announce ticket using speech synthesis
 function announceTicket(ticketId, counterName) {
-    // Format the ticket ID for better pronunciation by separating each character
-    let parts = ticketId.split('-');
-    let formattedTicket = '';
+    // Format the ticket ID for better pronunciation by spelling out each character
+    let spellOut = '';
     
-    if (parts.length === 2) {
-        // Before dash - pronounce each letter separately
-        let letters = parts[0];
-        for (let i = 0; i < letters.length; i++) {
-            formattedTicket += letters[i] + ' ';
+    // Spell out each character with spaces between them
+    for (let i = 0; i < ticketId.length; i++) {
+        // Add a space between characters
+        if (i > 0) {
+            spellOut += ' ';
         }
         
-        // Add a slight pause
-        formattedTicket += ', ';
-        
-        // After dash - pronounce each number separately
-        let numbers = parts[1];
-        for (let i = 0; i < numbers.length; i++) {
-            formattedTicket += numbers[i] + ' ';
-        }
-    } else {
-        // If there's no dash, try to identify letters and numbers
-        let ticketText = ticketId;
-        let result = '';
-        
-        // Find where numbers start (first digit in the string)
-        let numberStartIndex = ticketText.search(/[0-9]/);
-        
-        if (numberStartIndex !== -1) {
-            // Process letters (before first digit)
-            for (let i = 0; i < numberStartIndex; i++) {
-                result += ticketText[i] + ' ';
-            }
-            
-            // Add a slight pause
-            result += ', ';
-            
-            // Process numbers (from first digit onwards)
-            for (let i = numberStartIndex; i < ticketText.length; i++) {
-                result += ticketText[i] + ' ';
-            }
-            
-            formattedTicket = result;
-        } else {
-            // No numbers found, just space out all characters
-            for (let i = 0; i < ticketText.length; i++) {
-                formattedTicket += ticketText[i] + ' ';
-            }
-        }
+        // Add the character
+        spellOut += ticketId[i];
     }
     
-    let announcement = `Ticket ${formattedTicket}, please proceed to ${counterName}`;
+    let announcement = `Ticket ${spellOut}, please proceed to ${counterName}`;
+    console.log("Announcing: " + announcement); // Debug log
     
     // Check if browser supports speech synthesis
     if ('speechSynthesis' in window) {
         // Create a new speech synthesis utterance
         let utterance = new SpeechSynthesisUtterance(announcement);
-        utterance.rate = 0.8; // Slightly slower rate for clarity with spaced characters
+        utterance.rate = 0.8; // Slower rate for clarity when spelling out
         utterance.pitch = 1;
         utterance.volume = 1;
         
         // Get available voices and set to a clear voice if available
-        let voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-            // Try to find a good English voice
-            let englishVoice = voices.find(voice => 
-                voice.lang.includes('en') && voice.name.includes('Female'));
-            if (englishVoice) utterance.voice = englishVoice;
-        }
+        window.speechSynthesis.getVoices();
         
         // Wait for the ding sound to complete before speaking
-        // Typical ding sound is about 1-2 seconds, so wait 2 seconds
         setTimeout(() => {
+            console.log("Speaking announcement now");
             window.speechSynthesis.speak(utterance);
-        }, 2000); // Wait 2 seconds after the ding starts
+        }, 1000); // Wait 1 second after the ding starts
     }
 }
 
 socket.on("ticket_called", function(data){
+    // Always reset and play the ding sound for both Call Next and Call Again
     try { 
+        // Reset the audio to the beginning
+        ding.pause();
         ding.currentTime = 0;
-        // Play the ding sound first
-        ding.play().catch(function(e){console.log("Audio play error:", e)}); 
-        // Don't cut off the ding sound - let it play naturally
-        // Remove the timeout that was cutting it off
-    } catch(e){}
+        
+        // Play the ding sound first - force it to play every time
+        var playPromise = ding.play();
+        
+        // If this is the user's ticket being called, mark it as served in localStorage
+        // and set a cookie to prevent refresh-based ticket creation
+        if (data.mark_served) {
+            localStorage.setItem('ticket_served_' + data.id, 'true');
+            
+            // Set a cookie to mark this category as served with proper expiration
+            if (data.category) {
+                // Set cookie with 1 hour expiration and proper path
+                var expirationDate = new Date();
+                expirationDate.setTime(expirationDate.getTime() + (60 * 60 * 1000)); // 1 hour
+                document.cookie = "served_ticket_" + data.category + "=true; expires=" + expirationDate.toUTCString() + "; path=/; SameSite=Lax";
+                console.log("Set served cookie for category:", data.category);
+            }
+            
+            // Show a message that the ticket has been served
+            setTimeout(function() {
+                alert("Your ticket has been served. To get a new ticket, please scan the QR code again.");
+            }, 3000); // Show after 3 seconds to allow announcement to complete
+        }
+        
+        if (playPromise !== undefined) {
+            playPromise.catch(function(e){
+                console.log("Audio play error:", e);
+                // Try playing again with user interaction
+                document.addEventListener('click', function playOnClick() {
+                    ding.play();
+                    document.removeEventListener('click', playOnClick);
+                }, { once: true });
+            });
+        }
+    } catch(e){
+        console.log("Error playing ding sound:", e);
+    }
     
     // Announce the ticket vocally AFTER the ding completes
-    // We'll handle this in the announceTicket function
-    announceTicket(data.id, data.counter_name);
+    // Use the original ticket ID for announcement
+    var ticketToAnnounce = data.id; // Always use the original ticket ID
+    console.log("Ticket called event received. ID:", data.id, "Display ID:", data.display_id);
+    announceTicket(ticketToAnnounce, data.counter_name);
     
     var counterElem = document.getElementById('counter_' + data.counter_id);
     if(counterElem){
-        counterElem.innerText = data.id;
+        // Display counter-specific number instead of global ID
+        // Use the display_id from the data object
+        counterElem.innerText = data.display_id || data.id;
         // Flash effect
         var card = counterElem.parentElement;
         card.classList.add('flash');
@@ -1544,14 +1694,33 @@ admin_login_template = """<!DOCTYPE html>
 
 # ------------------ LOGIC ------------------
 
+
+
 def generate_ticket(category):
     global global_arrival_counter
-    category_counters[category] += 1
     global_arrival_counter += 1
-    tid = f"{ticket_prefixes[category]}-{category_counters[category]:03d}"
-    ticket = {"id": tid, "category": category, "arrival_order": global_arrival_counter}
+    
+    # Simply increment the category counter for new tickets
+    # This preserves existing ticket numbers and just continues from where we left off
+    category_counters[category] += 1
+    next_number = category_counters[category]
+    
+    tid = f"{ticket_prefixes[category]}-{next_number:03d}"
+    
+    # Create ticket with category and arrival order
+    ticket = {
+        "id": tid, 
+        "category": category, 
+        "arrival_order": global_arrival_counter,
+        "counter_id": None,  # Will be assigned when a counter calls this ticket
+        "counter_number": None  # Will be assigned a counter-specific number
+    }
+    
+    # Add to the category queue and sort by arrival_order to ensure FIFO
     queue[category].append(ticket)
-    # notify counters and admin
+    queue[category].sort(key=lambda x: x['arrival_order'])
+    
+    # Notify counters and admin
     socketio.emit("queue_update", get_full_state(), room="all_counters")
     return ticket
 
@@ -1559,14 +1728,33 @@ def get_display_state():
     return list(counters.values())
 
 def get_full_state():
+    # Copy main category queues
     qcopy = {cat: [t.copy() for t in lst] for cat, lst in queue.items()}
+    
+    # Copy counter-specific queues
+    counter_queues_copy = {}
+    for cid, cat_queues in counter_queues.items():
+        counter_queues_copy[cid] = {cat: [t.copy() for t in tickets] for cat, tickets in cat_queues.items()}
+    
+    # Copy counters
     ccopy = {cid: c.copy() for cid, c in counters.items()}
-    return {"queue": qcopy, "counters": ccopy}
+    
+    return {
+        "queue": qcopy, 
+        "counters": ccopy,
+        "counter_queues": counter_queues_copy
+    }
 
 def call_next_ticket(counter_id):
     counter = counters.get(counter_id)
     if not counter:
         return
+    
+    # Initialize counter-specific queues and numbering if not already done
+    if counter_id not in counter_queues:
+        counter_queues[counter_id] = {cat: [] for cat in counter['categories']}
+    if counter_id not in counter_numbers:
+        counter_numbers[counter_id] = {cat: 0 for cat in counter['categories']}
         
     # Find the earliest ticket across all categories this counter handles
     earliest_ticket = None
@@ -1575,26 +1763,60 @@ def call_next_ticket(counter_id):
     
     for cat in counter['categories']:
         if queue.get(cat) and len(queue[cat]) > 0:
+            # Sort the queue by arrival_order to ensure FIFO (defensive programming)
+            queue[cat].sort(key=lambda x: x['arrival_order'])
+            
             # Check if this category has a ticket with earlier arrival order
             if queue[cat][0]['arrival_order'] < earliest_order:
                 earliest_order = queue[cat][0]['arrival_order']
-                earliest_ticket = queue[cat][0]
+                earliest_ticket = queue[cat][0].copy()  # Make a copy to avoid reference issues
                 earliest_category = cat
     
     # Process the earliest ticket if found
     if earliest_ticket and earliest_category:
         try:
-            # Remove the ticket from its category queue
-            queue[earliest_category].remove(earliest_ticket)
+            # Remove the ticket from the main category queue
+            queue[earliest_category].remove(next(t for t in queue[earliest_category] if t['id'] == earliest_ticket['id']))
+            
+            # Assign counter-specific number
+            counter_numbers[counter_id][earliest_category] += 1
+            counter_number = counter_numbers[counter_id][earliest_category]
+            
+            # Update ticket with counter assignment and counter-specific number
+            earliest_ticket['counter_id'] = counter_id
+            earliest_ticket['counter_number'] = counter_number
+            # Keep the original ticket ID for display and announcement
+            earliest_ticket['display_id'] = earliest_ticket['id']
+            
+            # Add to counter-specific queue
+            counter_queues[counter_id][earliest_category].append(earliest_ticket)
+            
+            # Update counter's current ticket
             counter['current_ticket'] = earliest_ticket['id']
-        except (ValueError, KeyError) as e:
+            
+        except (ValueError, KeyError, StopIteration) as e:
             # Handle case where ticket might have been removed by another process
             print(f"Error processing ticket: {e}")
             return
-        # notify the user who holds this ticket (room with ticket id)
-        socketio.emit("ticket_called", {"id": earliest_ticket['id'], "counter_name": counter['name']}, room=earliest_ticket['id'])
+            
+        # Notify the user who holds this ticket (room with ticket id)
+        socketio.emit("ticket_called", {
+            "id": earliest_ticket['id'], 
+            "counter_name": counter['name'],
+            "display_id": earliest_ticket['display_id'],
+            "counter_number": earliest_ticket['counter_number'],
+            "mark_served": True,
+            "category": earliest_ticket['category']
+        }, room=earliest_ticket['id'])
+        
         # Also notify the display to play sound and update
-        socketio.emit("ticket_called", {"id": earliest_ticket['id'], "counter_name": counter['name'], "counter_id": counter_id}, room="display")
+        socketio.emit("ticket_called", {
+            "id": earliest_ticket['id'], 
+            "counter_name": counter['name'], 
+            "counter_id": counter_id,
+            "display_id": earliest_ticket['display_id'],
+            "counter_number": earliest_ticket['counter_number']
+        }, room="display")
     else:
         counter['current_ticket'] = None
     # update display and all counters/admin
@@ -1644,6 +1866,20 @@ def user_home():
     # ensure user provided name first
     if not session.get("user_name"):
         return redirect("/")
+    
+    # Check if user has any active tickets
+    for cat in queue:
+        cat_ticket_key = f"ticket_{cat}"
+        if session.get(cat_ticket_key):
+            ticket_id = session.get(cat_ticket_key)
+            # Verify ticket still exists in queue (not served yet)
+            for t in queue[cat]:
+                if t['id'] == ticket_id:
+                    # User has an active ticket, redirect back to ticket page
+                    flash_message = f"You have an active ticket in {cat}. Please wait for it to be served or delete it first."
+                    session['warning_message'] = flash_message
+                    return redirect(f"/ticket_page/{cat}")
+    
     return render_template_string(user_template, categories=user_categories)
 
 @app.route("/ticket_page/<category>")
@@ -1654,10 +1890,48 @@ def ticket_page(category):
     # Protect: if a user navigates manually to a category that isn't shown, still allow if exists.
     if category not in queue:
         return "Invalid service", 404
+    
+    # Check if user's ticket has already been served (prevent refresh abuse)
+    served_cookie = request.cookies.get(f"served_ticket_{category}")
+    print(f"DEBUG: Checking served cookie for {category}: {served_cookie}")
+    if served_cookie == "true":
+        print(f"DEBUG: Redirecting to services - ticket already served for {category}")
+        # User's ticket was already served, redirect to services page
+        # Clear the session ticket for this category since it was served
+        session_ticket_key = f"ticket_{category}"
+        if session_ticket_key in session:
+            del session[session_ticket_key]
+        return redirect("/services")
         
     # Check if user already has a ticket for this category in session
     session_ticket_key = f"ticket_{category}"
     existing_ticket = session.get(session_ticket_key)
+    
+    # Check if user has any active tickets in any category
+    has_active_ticket = False
+    active_ticket_id = None
+    active_ticket_category = None
+    
+    for cat in queue:
+        cat_ticket_key = f"ticket_{cat}"
+        if session.get(cat_ticket_key):
+            ticket_id = session.get(cat_ticket_key)
+            # Verify ticket still exists in queue
+            for t in queue[cat]:
+                if t['id'] == ticket_id:
+                    has_active_ticket = True
+                    active_ticket_id = ticket_id
+                    active_ticket_category = cat
+                    break
+            if has_active_ticket:
+                break
+    
+    # If user has an active ticket in another category, redirect to deletion page
+    if has_active_ticket and active_ticket_category != category:
+        # Redirect to existing ticket with deletion message
+        flash_message = f"You already have an active ticket in {active_ticket_category}. Please delete it before requesting a new ticket."
+        session['require_deletion'] = True
+        return redirect(f"/view_ticket/{active_ticket_id}")
     
     # If user already has a ticket for this category, find it in the queue
     if existing_ticket:
@@ -1677,16 +1951,60 @@ def ticket_page(category):
         
     # pass ding_url (static) into template so audio uses it
     ding_url = url_for('static', filename='ding.mp3')
-    return render_template_string(ticket_page_template, ticket=ticket, ding_url=ding_url)
+    require_deletion = session.pop('require_deletion', False)
+    warning_message = session.pop('warning_message', None)
+    response = make_response(render_template_string(ticket_page_template, 
+                                                  ticket=ticket, 
+                                                  ding_url=ding_url,
+                                                  require_deletion=require_deletion,
+                                                  warning_message=warning_message))
+    
+    # Add cache control headers to prevent back button navigation
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
 
-@app.route("/ticket_wait_time/<ticket_id>")
-def ticket_wait_time(ticket_id):
-    # compute simple estimate: 5 minutes per person ahead (search queue for ticket)
-    for cat in queue:
-        for i, t in enumerate(queue[cat]):
-            if t['id'] == ticket_id:
-                return {"waiting_time": i * 5}
-    return {"waiting_time": 0}
+
+    
+@app.route("/delete_ticket/<ticket_id>", methods=["POST"])
+def delete_ticket(ticket_id):
+    """Delete a ticket from the system"""
+    try:
+        # Check if ticket exists
+        ticket_found = False
+        category = None
+        
+        # Find and remove ticket from queue
+        for cat in queue:
+            for i, t in enumerate(queue[cat]):
+                if t['id'] == ticket_id:
+                    ticket_found = True
+                    category = cat
+                    # Remove from queue
+                    queue[cat].pop(i)
+                    break
+            if ticket_found:
+                break
+                
+        if not ticket_found:
+            return jsonify({"success": False, "message": "Ticket not found"}), 404
+            
+        # Remove from session if present
+        if 'ticket_id' in session and session['ticket_id'] == ticket_id:
+            session.pop('ticket_id', None)
+            
+        # Notify all clients about queue update
+        socketio.emit("queue_update", get_full_state(), room="all_counters")
+        
+        # Log the deletion for audit purposes (without user data)
+        app.logger.info(f"Ticket {ticket_id} deleted from category {category}")
+        
+        return jsonify({"success": True, "message": "Ticket successfully deleted"})
+    except Exception as e:
+        app.logger.error(f"Error deleting ticket {ticket_id}: {str(e)}")
+        return jsonify({"success": False, "message": "An error occurred while deleting the ticket"}), 500
 
 @app.route("/display")
 def display_page():
@@ -1800,13 +2118,17 @@ def handle_call_again(data):
             # Notify the user who holds this ticket (room with ticket id)
             emit("ticket_called", {
                 "id": ticket_id, 
-                "counter_name": counter['name']
+                "counter_name": counter['name'],
+                "counter_id": counter_id,
+                "display_id": ticket_id
             }, room=ticket_id)
             
             # Also notify the display
             emit("ticket_called", {
                 "id": ticket_id, 
-                "counter_name": counter['name']
+                "counter_name": counter['name'],
+                "counter_id": counter_id,
+                "display_id": ticket_id
             }, room="display")
     except Exception as e:
         print(f"Error in call_again: {e}")
@@ -1819,5 +2141,7 @@ def handle_call_again(data):
 # ------------------ RUN ------------------
 
 if __name__ == "__main__":
+    print("Starting Proxima queue system...")
+    
     port = int(os.environ.get("PORT", 5000))
     socketio.run(app, host="0.0.0.0", port=port, debug=True)
