@@ -504,6 +504,24 @@ h1 {
   transition: var(--transition);
 }
 
+.primary-btn {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 1.5rem;
+  transition: var(--transition);
+  display: inline-block;
+  text-decoration: none;
+}
+.primary-btn:hover {
+  background-color: var(--primary-dark);
+  transform: translateY(-2px);
+}
+
 .delete-btn:hover {
   background-color: #dc2626;
   transform: translateY(-2px);
@@ -564,29 +582,43 @@ h1 {
 </style>
 </head>
 <body>
-<!-- Prevent back button with warning -->
-<script>
-  var ticketServed = false;
+  <!-- Prevent back button with warning -->
+  <script>
+    var ticketServed = false;
   
-  // Prevent back button navigation
-  history.pushState(null, null, document.URL);
-  window.addEventListener('popstate', function (event) {
-    if (!ticketServed) {
-      // Show warning and prevent navigation
-      alert("Your ticket has not been served yet. Please wait for your ticket to be called or delete it if you want to leave.");
-      history.pushState(null, null, document.URL);
-    }
-  });
+    // Prevent back button navigation
+    history.pushState(null, null, document.URL);
+    window.addEventListener('popstate', function (event) {
+      if (!ticketServed) {
+        // Show warning and prevent navigation
+        alert("Your ticket has not been served yet. Please wait for your ticket to be called or delete it if you want to leave.");
+        history.pushState(null, null, document.URL);
+      }
+    });
   
-  // Prevent page refresh with warning
-  window.addEventListener('beforeunload', function (event) {
-    if (!ticketServed) {
-      event.preventDefault();
-      event.returnValue = 'Your ticket has not been served yet. Are you sure you want to leave?';
-      return 'Your ticket has not been served yet. Are you sure you want to leave?';
-    }
-  });
-</script>
+    // Prevent page refresh with warning
+    window.addEventListener('beforeunload', function (event) {
+      if (!ticketServed) {
+        event.preventDefault();
+        event.returnValue = 'Your ticket has not been served yet. Are you sure you want to leave?';
+        return 'Your ticket has not been served yet. Are you sure you want to leave?';
+      }
+    });
+
+    // Safari/iOS: BFCache handling — reload on back/forward to re-run server checks
+    window.addEventListener('pageshow', function (event) {
+      var navEntries = (performance && performance.getEntriesByType) ? performance.getEntriesByType('navigation') : null;
+      var isBackForward = navEntries && navEntries[0] && navEntries[0].type === 'back_forward';
+      if ((event.persisted || isBackForward) && !ticketServed) {
+        // Force a full reload so server-side session checks/redirects apply
+        window.location.reload();
+      }
+    });
+
+    // Register an unload handler to discourage Safari from putting this page in BFCache
+    // (empty handler is enough to disqualify some versions of Safari)
+    window.addEventListener('unload', function(){});
+  </script>
 <div class="card">
   <div class="logo">Proxima <span class="highlight">X</span> APU</div>
   <h1>Your Ticket</h1>
@@ -602,6 +634,14 @@ h1 {
   </div>
   <div class="small">Please wait — you will be notified when your ticket is called.</div>
   <button id="delete-ticket" class="delete-btn">Delete Ticket</button>
+</div>
+
+<!-- Served Thank-You View -->
+<div id="served_container" class="card" style="display:none;">
+  <div class="logo">Proxima <span class="highlight">X</span> APU</div>
+  <h1>Thank you!</h1>
+  <div class="info">Your ticket has been served.</div>
+  <a href="/services" class="primary-btn">Back to Services</a>
 </div>
 
 <!-- Notification element -->
@@ -689,6 +729,23 @@ socket.on("ticket_called", function(data){
         
         // Mark ticket as served - allow navigation
         ticketServed = true;
+
+        // Set cookie for served category to prevent refresh-based ticket creation
+        if (data.mark_served && data.category) {
+            try {
+                var expirationDate = new Date();
+                expirationDate.setTime(expirationDate.getTime() + (60 * 60 * 1000)); // 1 hour
+                document.cookie = "served_ticket_" + data.category + "=true; expires=" + expirationDate.toUTCString() + "; path=/; SameSite=Lax";
+            } catch(e) { console.log("Cookie set error:", e); }
+
+            // Swap UI to a thank-you view
+            var cardEl = document.querySelector('.card');
+            var servedEl = document.getElementById('served_container');
+            if (cardEl && servedEl) {
+                cardEl.style.display = 'none';
+                servedEl.style.display = 'block';
+            }
+        }
         
         // Vibrate if supported
         if ("vibrate" in navigator) {
