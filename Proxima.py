@@ -585,6 +585,14 @@ h1 {
   <!-- Prevent back button with warning -->
   <script>
     var ticketServed = false;
+
+    // If a previous ticket session was terminated, redirect to home
+    try {
+      if (localStorage.getItem("ticket_terminated") === "1") {
+        localStorage.removeItem("ticket_terminated");
+        location.replace("/");
+      }
+    } catch(e) {}
   
     // Prevent back button navigation
     history.pushState(null, null, document.URL);
@@ -636,13 +644,6 @@ h1 {
   <button id="delete-ticket" class="delete-btn">Delete Ticket</button>
 </div>
 
-<!-- Served Thank-You View -->
-<div id="served_container" class="card" style="display:none;">
-  <div class="logo">Proxima <span class="highlight">X</span> APU</div>
-  <h1>Thank you!</h1>
-  <div class="info">Your ticket has been served.</div>
-  <a href="/services" class="primary-btn">Back to Services</a>
-</div>
 
 <!-- Notification element -->
 <div id="notification"></div>
@@ -730,22 +731,11 @@ socket.on("ticket_called", function(data){
         // Mark ticket as served - allow navigation
         ticketServed = true;
 
-        // Set cookie for served category to prevent refresh-based ticket creation
-        if (data.mark_served && data.category) {
-            try {
-                var expirationDate = new Date();
-                expirationDate.setTime(expirationDate.getTime() + (60 * 60 * 1000)); // 1 hour
-                document.cookie = "served_ticket_" + data.category + "=true; expires=" + expirationDate.toUTCString() + "; path=/; SameSite=Lax";
-            } catch(e) { console.log("Cookie set error:", e); }
-
-            // Swap UI to a thank-you view
-            var cardEl = document.querySelector('.card');
-            var servedEl = document.getElementById('served_container');
-            if (cardEl && servedEl) {
-                cardEl.style.display = 'none';
-                servedEl.style.display = 'block';
-            }
-        }
+        // Terminate session and force restart flow (cross-browser safe)
+        try { localStorage.setItem('ticket_terminated', '1'); } catch(e) {}
+        fetch('/end_ticket_session', { method: 'POST' })
+            .then(function(){ location.replace('/'); })
+            .catch(function(){ location.replace('/'); });
         
         // Vibrate if supported
         if ("vibrate" in navigator) {
@@ -2062,6 +2052,21 @@ def delete_ticket(ticket_id):
     except Exception as e:
         app.logger.error(f"Error deleting ticket {ticket_id}: {str(e)}")
         return jsonify({"success": False, "message": "An error occurred while deleting the ticket"}), 500
+
+@app.route("/end_ticket_session", methods=["POST"])
+def end_ticket_session():
+    try:
+        # Clear all session data, including user_name and any ticket keys
+        session.clear()
+        resp = jsonify({"success": True})
+        # Add cache control headers to discourage caching
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
+    except Exception as e:
+        app.logger.error(f"Error ending ticket session: {str(e)}")
+        return jsonify({"success": False, "message": "Failed to end session"}), 500
 
 @app.route("/display")
 def display_page():
